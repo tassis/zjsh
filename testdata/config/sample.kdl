@@ -1,0 +1,14 @@
+defaults {
+  shell "sh"
+}
+
+project "api" {
+  path "/tmp/api"
+  session "api"
+  startup "nvim ."
+}
+
+project "ops" {
+  path "/tmp/ops"
+  layout_file "/tmp/ops.kdl"
+}

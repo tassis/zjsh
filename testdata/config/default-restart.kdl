@@ -1,0 +1,9 @@
+defaults {
+  shell "sh"
+  restart_on_resurrection true
+}
+
+project "api" {
+  path "/tmp/api"
+  session "api"
+}

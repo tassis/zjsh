@@ -1,0 +1,11 @@
+defaults {
+  shell "sh"
+  restart_on_resurrection false
+}
+
+project "api" {
+  path "/tmp/api"
+  session "api"
+  startup "nvim ."
+  restart_on_resurrection true
+}
