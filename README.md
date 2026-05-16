@@ -1,5 +1,8 @@
 # zjsh
 
+https://github.com/user-attachments/assets/cf4e0979-5ad8-4e52-960b-3881faf552e2
+
+
 `zjsh` is a selector-friendly launcher for `zellij` sessions and projects.
 
 It is a `zellij`-focused alternative to [`sesh`](https://github.com/joshmedeski/sesh), and borrows heavily from `sesh`'s idea of collecting sessions and projects into one fuzzy-selectable workflow.
