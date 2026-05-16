@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/domain"
 )
 
 func WriteJSON(w io.Writer, entries []domain.Entry) error {

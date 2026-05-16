@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"zjsh/internal/domain"
-	"zjsh/internal/platform"
+	"github.com/saweima12/zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/platform"
 )
 
 type Session struct {

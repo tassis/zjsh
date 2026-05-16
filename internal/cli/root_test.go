@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"zjsh/internal/platform"
-	"zjsh/internal/provider/config"
-	"zjsh/internal/provider/zellij"
-	"zjsh/internal/provider/zoxide"
-	"zjsh/internal/service"
+	"github.com/saweima12/zjsh/internal/platform"
+	"github.com/saweima12/zjsh/internal/provider/config"
+	"github.com/saweima12/zjsh/internal/provider/zellij"
+	"github.com/saweima12/zjsh/internal/provider/zoxide"
+	"github.com/saweima12/zjsh/internal/service"
 )
 
 type fakeRunner struct {

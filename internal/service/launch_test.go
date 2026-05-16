@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/domain"
 )
 
 type recordingRunner struct {

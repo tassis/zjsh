@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"zjsh/internal/platform"
+	"github.com/saweima12/zjsh/internal/platform"
 )
 
 type Provider struct {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/domain"
 )
 
 func TestParseSessions(t *testing.T) {

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"zjsh/internal/cli"
+	"github.com/saweima12/zjsh/internal/cli"
 )
 
 func main() {

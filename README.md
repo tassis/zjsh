@@ -20,6 +20,14 @@ It does not provide its own TUI. Pipe `zjsh list` into `fzf`, `gum`, or any sele
 
 `list` and `connect` use whatever sources are available. `doctor` is stricter and reports missing `zellij` or `zoxide` binaries as failures.
 
+## Installation
+
+```bash
+go install github.com/saweima12/zjsh/cmd/zjsh@latest
+```
+
+Make sure your Go binary directory, usually `$GOBIN` or `$GOPATH/bin`, is in `PATH`.
+
 ## Quick Start
 
 ```bash

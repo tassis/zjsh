@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	"zjsh/internal/domain"
-	configprovider "zjsh/internal/provider/config"
-	"zjsh/internal/provider/zellij"
-	"zjsh/internal/provider/zoxide"
+	"github.com/saweima12/zjsh/internal/domain"
+	configprovider "github.com/saweima12/zjsh/internal/provider/config"
+	"github.com/saweima12/zjsh/internal/provider/zellij"
+	"github.com/saweima12/zjsh/internal/provider/zoxide"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/domain"
 )
 
 var ErrTargetNotFound = errors.New("target not found")

@@ -3,7 +3,7 @@ package view
 import (
 	"io"
 
-	"zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/domain"
 )
 
 func WriteTable(w io.Writer, entries []domain.Entry) error {

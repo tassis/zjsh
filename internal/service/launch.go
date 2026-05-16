@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"zjsh/internal/domain"
-	"zjsh/internal/platform"
+	"github.com/saweima12/zjsh/internal/domain"
+	"github.com/saweima12/zjsh/internal/platform"
 )
 
 type Launcher struct {
