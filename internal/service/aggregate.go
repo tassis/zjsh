@@ -43,7 +43,7 @@ func (a Aggregator) ListEntries(ctx context.Context, includeResurrectable bool) 
 	for _, project := range config.Projects {
 		sessionName := project.Session
 		if sessionName == "" {
-			sessionName = filepath.Base(project.Path)
+			sessionName = project.Name
 		}
 		restartOnResurrection := config.Defaults.RestartOnResurrection
 		if project.RestartOnResurrection != nil {
@@ -130,11 +130,20 @@ func dedupeEntries(entries []domain.Entry) []domain.Entry {
 }
 
 func canonicalKey(entry domain.Entry, aliases map[string]string, merged map[string]domain.Entry) string {
+	if entry.Type == domain.EntryProject {
+		for _, key := range projectIdentityKeys(entry) {
+			if canonical, ok := aliases[key]; ok {
+				return canonical
+			}
+		}
+		return primaryKey(entry)
+	}
+
 	if entry.Type == domain.EntryPath && entry.Path != "" {
 		if canonical, ok := aliases["path:"+entry.Path]; ok {
 			return canonical
 		}
-		if canonical, ok := aliases["session:"+filepath.Base(entry.Path)]; ok && merged[canonical].Type == domain.EntrySession {
+		if canonical, ok := aliases["session:"+filepath.Base(entry.Path)]; ok && merged[canonical].SessionState != domain.SessionStateNone {
 			return canonical
 		}
 		return primaryKey(entry)
@@ -146,6 +155,17 @@ func canonicalKey(entry domain.Entry, aliases map[string]string, merged map[stri
 		}
 	}
 	return primaryKey(entry)
+}
+
+func projectIdentityKeys(entry domain.Entry) []string {
+	keys := make([]string, 0, 2)
+	if entry.Path != "" {
+		keys = append(keys, "path:"+entry.Path)
+	}
+	if entry.Name != "" {
+		keys = append(keys, "name:"+entry.Name)
+	}
+	return keys
 }
 
 func primaryKey(entry domain.Entry) string {

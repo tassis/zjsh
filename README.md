@@ -79,7 +79,7 @@ Plain `zjsh list` output is a single column designed for selectors:
 - `↺ <name>`: resurrectable `zellij` session
 - `→ <path>`: `zoxide` path
 
-Entries from different sources are merged when they refer to the same project path or session name. When sources merge, configured project fields are preferred while live session state from `zellij` is preserved. Without a configured project, an existing `zellij` session is preferred over a `zoxide` path with the same basename. Path-only `zoxide` entries do not merge with each other by basename, so different directories with the same basename stay separate.
+Configured projects are identified by project path and project name, so two configured projects are not merged just because they resolve to the same session basename. Other sources are merged when they refer to the same project path or session name. When sources merge, configured project fields are preferred while live session state from `zellij` is preserved. Any existing `zellij` session, including one already merged into a configured project, is preferred over a `zoxide` path with the same basename. Path-only `zoxide` entries do not merge with each other by basename, so different directories with the same basename stay separate.
 
 ## Connect Behavior
 
@@ -151,7 +151,7 @@ Supported fields:
 - `project.layout_file`
 - `project.restart_on_resurrection`
 
-`project.path` is required. If `project.session` is omitted, the session name is the basename of `project.path`.
+`project.path` is required. If `project.session` is omitted, the session name defaults to the project name.
 
 `project.path` and `project.layout_file` support `~` and `~/...` expansion. Other relative paths are left unchanged and passed through to `zellij`; use absolute paths or `~/...` when you want config-independent behavior.
 

@@ -100,6 +100,67 @@ func TestListEntriesUsesDefaultRestartPolicy(t *testing.T) {
 	}
 }
 
+func TestListEntriesDefaultsProjectSessionNameToProjectName(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "project-zjsh" {
+  path "/tmp/repos/zjsh"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	agg := Aggregator{
+		Config: config.Loader{Path: configPath},
+		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zellij list-sessions -n": "project-zjsh [LIVE]\n",
+		}}},
+		Zoxide: zoxide.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zoxide query -l": "",
+		}}},
+	}
+	entries, err := agg.ListEntries(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected project and session to merge, got %#v", entries)
+	}
+	if entries[0].SessionName != "project-zjsh" || entries[0].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected project name as default session name, got %+v", entries[0])
+	}
+}
+
+func TestListEntriesUsesExplicitProjectSessionName(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "project-zjsh" {
+  path "/tmp/repos/zjsh"
+  session "zjsh"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	agg := Aggregator{
+		Config: config.Loader{Path: configPath},
+		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zellij list-sessions -n": "zjsh [LIVE]\n",
+		}}},
+		Zoxide: zoxide.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zoxide query -l": "",
+		}}},
+	}
+	entries, err := agg.ListEntries(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected project and explicit session to merge, got %#v", entries)
+	}
+	if entries[0].SessionName != "zjsh" || entries[0].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected explicit session name, got %+v", entries[0])
+	}
+}
+
 func TestListEntriesPreservesZoxideOrderWithinPathEntries(t *testing.T) {
 	agg := Aggregator{
 		Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
@@ -183,6 +244,121 @@ func TestListEntriesPrefersLiveSessionOverSameBasenamePath(t *testing.T) {
 	}
 	if len(entry.Sources) != 2 {
 		t.Fatalf("expected merged sources, got %+v", entry)
+	}
+}
+
+func TestListEntriesPrefersProjectSessionOverSameBasenamePath(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "project-foo" {
+  path "/tmp/project/foo"
+  session "foo"
+  startup "nvim ."
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	agg := Aggregator{
+		Config: config.Loader{Path: configPath},
+		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zellij list-sessions -n": "foo [LIVE]\n",
+		}}},
+		Zoxide: zoxide.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zoxide query -l": "/tmp/other/foo\n",
+		}}},
+	}
+	entries, err := agg.ListEntries(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected project session and zoxide path to merge, got %#v", entries)
+	}
+	entry := entries[0]
+	if entry.Type != domain.EntryProject || entry.Name != "project-foo" || entry.Path != "/tmp/project/foo" {
+		t.Fatalf("expected project fields to win, got %+v", entry)
+	}
+	if entry.SessionState != domain.SessionStateLive || entry.SessionName != "foo" {
+		t.Fatalf("expected live session state to be preserved, got %+v", entry)
+	}
+	if len(entry.Sources) != 3 {
+		t.Fatalf("expected merged sources, got %+v", entry)
+	}
+}
+
+func TestListEntriesKeepsProjectsWithSameSessionBasenameSeparate(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "config-zjsh" {
+  path "/tmp/config/zjsh"
+}
+
+project "project-zjsh" {
+  path "/tmp/repos/zjsh"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	agg := Aggregator{
+		Config: config.Loader{Path: configPath},
+		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zellij list-sessions -n": "",
+		}}},
+		Zoxide: zoxide.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zoxide query -l": "/tmp/repos/zjsh\n",
+		}}},
+	}
+	entries, err := agg.ListEntries(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected both projects to stay separate, got %#v", entries)
+	}
+	if entries[0].Name != "config-zjsh" || entries[0].Path != "/tmp/config/zjsh" {
+		t.Fatalf("unexpected first project: %+v", entries[0])
+	}
+	if entries[1].Name != "project-zjsh" || entries[1].Path != "/tmp/repos/zjsh" {
+		t.Fatalf("expected zoxide path to merge into project-zjsh, got %+v", entries[1])
+	}
+	if len(entries[1].Sources) != 2 {
+		t.Fatalf("expected project-zjsh to include zoxide source, got %+v", entries[1])
+	}
+}
+
+func TestListEntriesProjectPathBeatsSessionBasenameForZoxidePath(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "project-zjsh" {
+  path "/tmp/repos/zjsh"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	agg := Aggregator{
+		Config: config.Loader{Path: configPath},
+		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zellij list-sessions -n": "zjsh [LIVE]\n",
+		}}},
+		Zoxide: zoxide.Provider{Runner: fakeRunner{outputs: map[string]string{
+			"zoxide query -l": "/tmp/repos/zjsh\n",
+		}}},
+	}
+	entries, err := agg.ListEntries(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected project and live session to stay separate, got %#v", entries)
+	}
+	if entries[0].Type != domain.EntryProject || entries[0].Name != "project-zjsh" || entries[0].SessionName != "project-zjsh" {
+		t.Fatalf("expected project to win path identity, got %+v", entries[0])
+	}
+	if len(entries[0].Sources) != 2 {
+		t.Fatalf("expected zoxide path to merge into project, got %+v", entries[0])
+	}
+	if entries[1].Type != domain.EntrySession || entries[1].SessionName != "zjsh" || entries[1].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected live session to remain separate, got %+v", entries[1])
 	}
 }
 

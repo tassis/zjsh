@@ -198,6 +198,56 @@ func TestConnectAcceptsSelectorLabel(t *testing.T) {
 	}
 }
 
+func TestConnectPrefersExistingSessionOverZoxidePathLabel(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "foo [LIVE]\n",
+		"zoxide query -l":         "/tmp/foo\n",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"connect", "→ /tmp/foo"}); code != 0 {
+		t.Fatalf("expected connect with path label to attach existing session, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij attach foo" {
+		t.Fatalf("expected existing session attach, got %#v", runner.calls)
+	}
+}
+
+func TestListTextHidesZoxidePathWhenExistingSessionHasSameBasename(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "foo [LIVE]\n",
+		"zoxide query -l":         "/tmp/foo\n",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"list"}); code != 0 {
+		t.Fatalf("expected list success, stderr=%q", stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != "● foo" {
+		t.Fatalf("expected session selector only, got %q", got)
+	}
+}
+
 func TestDoctorWarnsOnMissingConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
