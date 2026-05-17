@@ -8,6 +8,23 @@ type Config struct {
 type Defaults struct {
 	Shell                 string
 	RestartOnResurrection bool
+	Icons                 Icons
+}
+
+type Icons struct {
+	Project       string
+	Session       string
+	Resurrectable string
+	Path          string
+}
+
+func DefaultIcons() Icons {
+	return Icons{
+		Project:       "◆",
+		Session:       "●",
+		Resurrectable: "↺",
+		Path:          "→",
+	}
 }
 
 type Project struct {

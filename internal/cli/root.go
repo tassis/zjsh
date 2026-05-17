@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/saweima12/zjsh/internal/domain"
 	"github.com/saweima12/zjsh/internal/platform"
 	configprovider "github.com/saweima12/zjsh/internal/provider/config"
 	"github.com/saweima12/zjsh/internal/provider/zellij"
@@ -85,17 +86,21 @@ func (a App) runList(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	jsonOutput := fs.Bool("json", false, "output entries as JSON")
+	iconsOutput := fs.Bool("i", false, "show selector icons")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	entries, err := a.Aggregator.ListEntries(ctx, true)
+	result, err := a.Aggregator.List(ctx, true)
 	if err != nil {
 		return err
 	}
 	if *jsonOutput {
-		return view.WriteJSON(a.Stdout, entries)
+		return view.WriteJSON(a.Stdout, result.Entries)
 	}
-	return view.WriteTable(a.Stdout, entries)
+	if *iconsOutput {
+		return view.WriteLabels(a.Stdout, result.Entries, result.Config.Defaults.Icons)
+	}
+	return view.WritePlain(a.Stdout, result.Entries)
 }
 
 func (a App) runConnect(ctx context.Context, args []string) error {
@@ -107,11 +112,13 @@ func (a App) runConnect(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: zjsh connect <target>")
 	}
-	target := normalizeConnectTarget(fs.Arg(0))
-	entries, err := a.Aggregator.ListEntries(ctx, true)
+	target := strings.TrimSpace(fs.Arg(0))
+	result, err := a.Aggregator.List(ctx, true)
 	if err != nil {
 		return err
 	}
+	target = normalizeConnectTarget(target, result.Config.Defaults.Icons)
+	entries := result.Entries
 	entry, err := service.ResolveExact(entries, target)
 	if err != nil {
 		return err
@@ -289,6 +296,10 @@ func sampleConfig() string {
 	return strings.TrimSpace(`defaults {
   shell "sh"
   restart_on_resurrection false
+  icon_project "◆"
+  icon_session "●"
+  icon_resurrectable "↺"
+  icon_path "→"
 }
 
 project "api" {
@@ -310,12 +321,41 @@ project "ops" {
 `) + "\n"
 }
 
-func normalizeConnectTarget(value string) string {
+func normalizeConnectTarget(value string, icons domain.Icons) string {
 	value = strings.TrimSpace(value)
-	for _, prefix := range []string{"◆ ", "→ ", "● ", "↺ ", "• "} {
+	for _, prefix := range connectLabelPrefixes(icons) {
 		if strings.HasPrefix(value, prefix) {
 			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
 		}
 	}
 	return value
+}
+
+func connectLabelPrefixes(icons domain.Icons) []string {
+	defaultIcons := domain.DefaultIcons()
+	values := []string{
+		defaultIcons.Project,
+		defaultIcons.Session,
+		defaultIcons.Resurrectable,
+		defaultIcons.Path,
+		icons.Project,
+		icons.Session,
+		icons.Resurrectable,
+		icons.Path,
+		"•",
+	}
+	prefixes := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		prefix := value + " "
+		if _, ok := seen[prefix]; ok {
+			continue
+		}
+		seen[prefix] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
 }

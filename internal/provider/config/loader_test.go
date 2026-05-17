@@ -12,6 +12,10 @@ func TestParseConfig(t *testing.T) {
 defaults {
   shell "bash"
   restart_on_resurrection true
+  icon_project "P"
+  icon_session "S"
+  icon_resurrectable "R"
+  icon_path "Z"
 }
 
 project "api" {
@@ -43,6 +47,9 @@ project "inherits" {
 	}
 	if !config.Defaults.RestartOnResurrection {
 		t.Fatalf("expected defaults restart_on_resurrection=true")
+	}
+	if config.Defaults.Icons.Project != "P" || config.Defaults.Icons.Session != "S" || config.Defaults.Icons.Resurrectable != "R" || config.Defaults.Icons.Path != "Z" {
+		t.Fatalf("unexpected configured icons: %+v", config.Defaults.Icons)
 	}
 	if len(config.Projects) != 4 {
 		t.Fatalf("expected 4 projects, got %d", len(config.Projects))
@@ -126,5 +133,8 @@ func TestLoadMissingConfigReturnsEmpty(t *testing.T) {
 	}
 	if len(config.Projects) != 0 {
 		t.Fatalf("expected empty projects, got %d", len(config.Projects))
+	}
+	if config.Defaults.Shell != "sh" || config.Defaults.Icons.Project != "◆" {
+		t.Fatalf("expected default config values, got %+v", config.Defaults)
 	}
 }

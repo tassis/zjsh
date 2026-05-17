@@ -24,18 +24,31 @@ type Aggregator struct {
 	Zoxide zoxide.Provider
 }
 
+type ListResult struct {
+	Entries []domain.Entry
+	Config  domain.Config
+}
+
 func (a Aggregator) ListEntries(ctx context.Context, includeResurrectable bool) ([]domain.Entry, error) {
-	config, err := a.Config.Load(ctx)
+	result, err := a.List(ctx, includeResurrectable)
 	if err != nil {
 		return nil, err
+	}
+	return result.Entries, nil
+}
+
+func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListResult, error) {
+	config, err := a.Config.Load(ctx)
+	if err != nil {
+		return ListResult{}, err
 	}
 	sessions, err := a.Zellij.ListSessions(ctx)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
 	paths, err := a.Zoxide.ListPaths(ctx)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
 
 	entries := make([]domain.Entry, 0, len(config.Projects)+len(sessions)+len(paths))
@@ -95,7 +108,7 @@ func (a Aggregator) ListEntries(ctx context.Context, includeResurrectable bool) 
 		})
 		order++
 	}
-	return dedupeEntries(entries), nil
+	return ListResult{Entries: dedupeEntries(entries), Config: config}, nil
 }
 
 func dedupeEntries(entries []domain.Entry) []domain.Entry {

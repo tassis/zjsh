@@ -73,7 +73,7 @@ func TestListJSON(t *testing.T) {
 			Zoxide: zoxide.Provider{Runner: runner},
 		},
 	}
-	if code := app.Run(context.Background(), []string{"list", "--json"}); code != 0 {
+	if code := app.Run(context.Background(), []string{"list", "--json", "-i"}); code != 0 {
 		t.Fatalf("Run() code = %d stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "old") {
@@ -84,7 +84,7 @@ func TestListJSON(t *testing.T) {
 	}
 }
 
-func TestListTextUsesSingleSelectorColumn(t *testing.T) {
+func TestListTextUsesSinglePlainColumnByDefault(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	runner := &fakeRunner{outputs: map[string]string{
@@ -111,11 +111,76 @@ func TestListTextUsesSingleSelectorColumn(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 selectors, got %d: %q", len(lines), got)
 	}
-	if lines[0] != "◆ api" {
+	if lines[0] != "api" {
 		t.Fatalf("expected first selector to be project/session name, got %q", lines[0])
 	}
-	if lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" {
+	if lines[1] != "/tmp/api" || lines[2] != "/tmp/notes" {
 		t.Fatalf("expected zoxide path action selectors, got %q", lines[1:])
+	}
+}
+
+func TestListTextShowsIconsWithFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "api [LIVE]\n",
+		"zoxide query -l":         "/tmp/api\n/tmp/notes\n",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: "../../testdata/config/basic.kdl"},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"list", "-i"}); code != 0 {
+		t.Fatalf("Run() code = %d stderr=%s", code, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	lines := strings.Split(got, "\n")
+	if lines[0] != "◆ api" || lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" {
+		t.Fatalf("expected icon labels, got %q", got)
+	}
+}
+
+func TestListTextUsesConfiguredIconsWithFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.kdl")
+	err := os.WriteFile(configPath, []byte(`defaults {
+  icon_project "P"
+  icon_session "S"
+  icon_resurrectable "R"
+  icon_path "Z"
+}
+
+project "api" { path "/tmp/api" }
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "old [RESURRECT]\n",
+		"zoxide query -l":         "/tmp/notes\n",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: configPath},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"list", "-i"}); code != 0 {
+		t.Fatalf("Run() code = %d stderr=%s", code, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != "P api\nR old\nZ /tmp/notes" {
+		t.Fatalf("expected configured icon labels, got %q", got)
 	}
 }
 
@@ -199,6 +264,40 @@ func TestConnectAcceptsSelectorLabel(t *testing.T) {
 	}
 }
 
+func TestConnectAcceptsConfiguredIconLabel(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.kdl")
+	err := os.WriteFile(configPath, []byte(`defaults {
+  icon_session "S"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "api [LIVE]\n",
+		"zoxide query -l":         "",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: configPath},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"connect", "S api"}); code != 0 {
+		t.Fatalf("expected connect with configured icon label to succeed, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij attach api" {
+		t.Fatalf("unexpected connect command: %#v", runner.calls)
+	}
+}
+
 func TestConnectZoxidePathLabelUsesHashFallbackWhenSessionExists(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -245,7 +344,7 @@ func TestListTextShowsZoxidePathWhenExistingSessionHasSameBasename(t *testing.T)
 		t.Fatalf("expected list success, stderr=%q", stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "● foo\n→ /tmp/foo" {
+	if got != "foo\n/tmp/foo" {
 		t.Fatalf("expected session and zoxide path action selectors, got %q", got)
 	}
 }

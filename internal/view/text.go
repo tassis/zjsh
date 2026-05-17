@@ -6,17 +6,26 @@ import (
 	"github.com/saweima12/zjsh/internal/domain"
 )
 
-func WriteTable(w io.Writer, entries []domain.Entry) error {
+func WritePlain(w io.Writer, entries []domain.Entry) error {
 	for _, entry := range entries {
-		if _, err := io.WriteString(w, selectorLabel(entry)+"\n"); err != nil {
+		if _, err := io.WriteString(w, selectorValue(entry)+"\n"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func selectorLabel(entry domain.Entry) string {
-	return selectorIcon(entry) + " " + selectorValue(entry)
+func WriteLabels(w io.Writer, entries []domain.Entry, icons domain.Icons) error {
+	for _, entry := range entries {
+		if _, err := io.WriteString(w, selectorLabel(entry, icons)+"\n"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func selectorLabel(entry domain.Entry, icons domain.Icons) string {
+	return selectorIcon(entry, icons) + " " + selectorValue(entry)
 }
 
 func selectorValue(entry domain.Entry) string {
@@ -32,20 +41,20 @@ func selectorValue(entry domain.Entry) string {
 	return entry.Path
 }
 
-func selectorIcon(entry domain.Entry) string {
+func selectorIcon(entry domain.Entry, icons domain.Icons) string {
 	switch entry.Type {
 	case domain.EntryProject:
-		return "◆"
+		return icons.Project
 	case domain.EntryPath:
-		return "→"
+		return icons.Path
 	case domain.EntrySession:
 		if entry.SessionState == domain.SessionStateResurrectable {
-			return "↺"
+			return icons.Resurrectable
 		}
-		return "●"
+		return icons.Session
 	default:
 		if entry.SessionState == domain.SessionStateResurrectable {
-			return "↺"
+			return icons.Resurrectable
 		}
 		return "•"
 	}

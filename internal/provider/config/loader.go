@@ -34,7 +34,7 @@ func (l Loader) Load(context.Context) (domain.Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return domain.Config{}, nil
+			return defaultConfig(), nil
 		}
 		return domain.Config{}, err
 	}
@@ -68,12 +68,7 @@ func normalizeConfigPaths(config domain.Config) (domain.Config, error) {
 
 func parseConfig(input string) (domain.Config, error) {
 	p := parser{tokens: tokenize(input)}
-	config := domain.Config{
-		Defaults: domain.Defaults{
-			Shell:                 "sh",
-			RestartOnResurrection: false,
-		},
-	}
+	config := defaultConfig()
 
 	for !p.done() {
 		node, err := p.nextNode()
@@ -103,11 +98,38 @@ func parseConfig(input string) (domain.Config, error) {
 	return config, nil
 }
 
+func defaultConfig() domain.Config {
+	return domain.Config{
+		Defaults: domain.Defaults{
+			Shell:                 "sh",
+			RestartOnResurrection: false,
+			Icons:                 domain.DefaultIcons(),
+		},
+	}
+}
+
 func defaultsWithFallback(base, parsed domain.Defaults) domain.Defaults {
 	if parsed.Shell != "" {
 		base.Shell = parsed.Shell
 	}
 	base.RestartOnResurrection = parsed.RestartOnResurrection
+	base.Icons = iconsWithFallback(base.Icons, parsed.Icons)
+	return base
+}
+
+func iconsWithFallback(base, parsed domain.Icons) domain.Icons {
+	if parsed.Project != "" {
+		base.Project = parsed.Project
+	}
+	if parsed.Session != "" {
+		base.Session = parsed.Session
+	}
+	if parsed.Resurrectable != "" {
+		base.Resurrectable = parsed.Resurrectable
+	}
+	if parsed.Path != "" {
+		base.Path = parsed.Path
+	}
 	return base
 }
 
@@ -125,6 +147,14 @@ func decodeDefaults(n node) (domain.Defaults, error) {
 			defaults.Shell = value
 		case "restart_on_resurrection":
 			defaults.RestartOnResurrection = value == "true"
+		case "icon_project":
+			defaults.Icons.Project = value
+		case "icon_session":
+			defaults.Icons.Session = value
+		case "icon_resurrectable":
+			defaults.Icons.Resurrectable = value
+		case "icon_path":
+			defaults.Icons.Path = value
 		default:
 			return domain.Defaults{}, fmt.Errorf("defaults: unsupported key %q", key)
 		}

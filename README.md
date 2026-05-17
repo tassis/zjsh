@@ -106,7 +106,7 @@ zjsh connect api
 
 ## Example Workflow
 
-Use `zjsh list` to print selector labels:
+Use `zjsh list` to print selector values:
 
 ```bash
 zjsh list
@@ -115,7 +115,7 @@ zjsh list
 Choose one with `fzf`:
 
 ```bash
-choice=$(zjsh list | fzf --prompt='zjsh> ')
+choice=$(zjsh list -i | fzf --prompt='zjsh> ')
 ```
 
 Connect to the selected target:
@@ -124,7 +124,7 @@ Connect to the selected target:
 [ -n "$choice" ] && zjsh connect "$choice"
 ```
 
-The selected value can be a raw target or a label from `zjsh list`:
+The selected value can be a raw target or a label from `zjsh list -i`:
 
 ```bash
 zjsh connect api
@@ -183,6 +183,10 @@ Supported fields:
 
 - `defaults.shell`: shell used for generated startup layouts
 - `defaults.restart_on_resurrection`: default resurrection handling
+- `defaults.icon_project`: project icon used by `zjsh list -i`
+- `defaults.icon_session`: live session icon used by `zjsh list -i`
+- `defaults.icon_resurrectable`: resurrectable session icon used by `zjsh list -i`
+- `defaults.icon_path`: zoxide path icon used by `zjsh list -i`
 - `project.path`: project directory, required
 - `project.session`: zellij session name, defaults to the project name
 - `project.startup`: command to run in a generated one-pane layout
@@ -191,6 +195,10 @@ Supported fields:
 - `project.restart_on_resurrection`: project-level override
 
 `project.path` and `project.layout_file` support `~` and `~/...` expansion. Other relative paths are passed through to `zellij` unchanged.
+
+`defaults.shell` is only used for `project.startup`. Startup commands run as `<shell> -lc "<startup>"` inside a generated one-pane zellij layout. It is not used when `layout` or `layout_file` is configured.
+
+Icon fields are optional. If omitted, `zjsh list -i` uses `◆`, `●`, `↺`, and `→`.
 
 ## Add A Zellij Command
 
@@ -202,7 +210,7 @@ Example using `fzf` in `tmux` mode:
 keybinds {
   tmux {
     bind "K" {
-      Run "sh" "-lc" "choice=$(zjsh list | fzf --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
+      Run "sh" "-lc" "choice=$(zjsh list -i | fzf --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
         close_on_exit true
       }
       SwitchToMode "Locked"
@@ -217,7 +225,7 @@ Example using `gum`:
 keybinds {
   tmux {
     bind "K" {
-      Run "sh" "-lc" "choice=$(zjsh list | gum filter --placeholder 'zjsh' --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
+      Run "sh" "-lc" "choice=$(zjsh list -i | gum filter --placeholder 'zjsh' --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
         close_on_exit true
       }
       SwitchToMode "Locked"
@@ -232,17 +240,23 @@ You can also create a shell command outside `zellij`:
 
 ```sh
 zj() {
-  choice=$(zjsh list | fzf --prompt='zjsh> ')
+  choice=$(zjsh list -i | fzf --prompt='zjsh> ')
   [ -n "$choice" ] && zjsh connect "$choice"
 }
 ```
 
 ## Commands
 
-List selector labels:
+List selector values:
 
 ```bash
 zjsh list
+```
+
+List selector labels with icons:
+
+```bash
+zjsh list -i
 ```
 
 List full metadata as JSON:
@@ -271,7 +285,7 @@ zjsh config init [--path <file>]
 
 ## Entry Labels
 
-Plain `zjsh list` output is a single column designed for selectors:
+Plain `zjsh list` output is a single column designed for selectors. By default it does not include icons. Use `zjsh list -i` to include icons:
 
 - `◆ <name>`: configured project
 - `● <name>`: live `zellij` session
