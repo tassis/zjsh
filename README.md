@@ -211,6 +211,8 @@ keybinds {
   tmux {
     bind "K" {
       Run "sh" "-lc" "choice=$(zjsh list -i | fzf --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
+        name "zjsh"
+        floating true
         close_on_exit true
       }
       SwitchToMode "Locked"
@@ -226,6 +228,8 @@ keybinds {
   tmux {
     bind "K" {
       Run "sh" "-lc" "choice=$(zjsh list -i | gum filter --placeholder 'zjsh' --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
+        name "zjsh"
+        floating true
         close_on_exit true
       }
       SwitchToMode "Locked"
