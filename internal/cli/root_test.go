@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/saweima12/zjsh/internal/domain"
 	"github.com/saweima12/zjsh/internal/platform"
 	"github.com/saweima12/zjsh/internal/provider/config"
 	"github.com/saweima12/zjsh/internal/provider/zellij"
@@ -107,14 +108,14 @@ func TestListTextUsesSingleSelectorColumn(t *testing.T) {
 		t.Fatalf("expected selector-only output, got: %s", got)
 	}
 	lines := strings.Split(got, "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 selectors, got %d: %q", len(lines), got)
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 selectors, got %d: %q", len(lines), got)
 	}
 	if lines[0] != "◆ api" {
 		t.Fatalf("expected first selector to be project/session name, got %q", lines[0])
 	}
-	if lines[1] != "→ /tmp/notes" {
-		t.Fatalf("expected path selector for zoxide-only entry, got %q", lines[1])
+	if lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" {
+		t.Fatalf("expected zoxide path action selectors, got %q", lines[1:])
 	}
 }
 
@@ -198,13 +199,14 @@ func TestConnectAcceptsSelectorLabel(t *testing.T) {
 	}
 }
 
-func TestConnectPrefersExistingSessionOverZoxidePathLabel(t *testing.T) {
+func TestConnectZoxidePathLabelUsesHashFallbackWhenSessionExists(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	runner := &fakeRunner{outputs: map[string]string{
 		"zellij list-sessions -n": "foo [LIVE]\n",
 		"zoxide query -l":         "/tmp/foo\n",
 	}}
+	pathSession := service.PrepareConnectEntry(domain.Entry{Type: domain.EntryPath, Path: "/tmp/foo"}, []domain.Entry{{Type: domain.EntrySession, SessionName: "foo"}}).SessionName
 	app := App{
 		Stdout: &stdout,
 		Stderr: &stderr,
@@ -216,14 +218,14 @@ func TestConnectPrefersExistingSessionOverZoxidePathLabel(t *testing.T) {
 		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
 	}
 	if code := app.Run(context.Background(), []string{"connect", "→ /tmp/foo"}); code != 0 {
-		t.Fatalf("expected connect with path label to attach existing session, stderr=%q", stderr.String())
+		t.Fatalf("expected connect with path label to create fallback session, stderr=%q", stderr.String())
 	}
-	if runner.calls[len(runner.calls)-1] != "zellij attach foo" {
-		t.Fatalf("expected existing session attach, got %#v", runner.calls)
+	if runner.calls[len(runner.calls)-1] != "zellij attach -c "+pathSession+" options --default-cwd /tmp/foo" {
+		t.Fatalf("expected fallback path session create, got %#v", runner.calls)
 	}
 }
 
-func TestListTextHidesZoxidePathWhenExistingSessionHasSameBasename(t *testing.T) {
+func TestListTextShowsZoxidePathWhenExistingSessionHasSameBasename(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	runner := &fakeRunner{outputs: map[string]string{
@@ -243,8 +245,8 @@ func TestListTextHidesZoxidePathWhenExistingSessionHasSameBasename(t *testing.T)
 		t.Fatalf("expected list success, stderr=%q", stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "● foo" {
-		t.Fatalf("expected session selector only, got %q", got)
+	if got != "● foo\n→ /tmp/foo" {
+		t.Fatalf("expected session and zoxide path action selectors, got %q", got)
 	}
 }
 

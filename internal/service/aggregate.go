@@ -140,13 +140,7 @@ func canonicalKey(entry domain.Entry, aliases map[string]string, merged map[stri
 	}
 
 	if entry.Type == domain.EntryPath && entry.Path != "" {
-		if canonical, ok := aliases["path:"+entry.Path]; ok {
-			return canonical
-		}
-		if canonical, ok := aliases["session:"+filepath.Base(entry.Path)]; ok && merged[canonical].SessionState != domain.SessionStateNone {
-			return canonical
-		}
-		return primaryKey(entry)
+		return "zoxide:" + entry.Path
 	}
 
 	for _, key := range identifierKeys(entry) {
@@ -180,7 +174,7 @@ func primaryKey(entry domain.Entry) string {
 
 func identifierKeys(entry domain.Entry) []string {
 	if entry.Type == domain.EntryPath && entry.Path != "" {
-		return []string{"path:" + entry.Path}
+		return []string{"zoxide:" + entry.Path}
 	}
 
 	keys := make([]string, 0, 3)

@@ -116,6 +116,7 @@ func (a App) runConnect(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	entry = service.PrepareConnectEntry(entry, entries)
 	return a.Launcher.Connect(ctx, entry)
 }
 

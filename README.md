@@ -278,11 +278,18 @@ Plain `zjsh list` output is a single column designed for selectors:
 - `↺ <name>`: resurrectable `zellij` session
 - `→ <path>`: `zoxide` path
 
-Configured projects are identified by project path and project name, so two configured projects are not merged just because they resolve to the same session basename. Other sources are merged when they refer to the same project path or session name.
+`zjsh list` prints entries from these sources, in this order:
 
-When sources merge, configured project fields are preferred while live session state from `zellij` is preserved. Any existing `zellij` session, including one already merged into a configured project, is preferred over a `zoxide` path with the same basename.
+- configured projects from `config.kdl`
+- live `zellij` sessions
+- resurrectable `zellij` sessions
+- `zoxide` paths
 
-Path-only `zoxide` entries do not merge with each other by basename, so different directories with the same basename stay separate.
+Display rules:
+
+- if a configured project and a `zellij` session use the same session name, they are shown as one project entry
+- `zoxide` paths are shown by full path, even when the basename matches a project or session
+- duplicate `zoxide` paths are removed by full path; paths with the same basename stay separate
 
 ## Connect Behavior
 
@@ -292,7 +299,7 @@ Resolution order is:
 
 1. project name
 2. session name
-3. full path
+3. full path; if a `zoxide` path and a project use the same path, the `zoxide` entry is used
 
 When the target is a live session, `zjsh` attaches to it outside `zellij` or switches to it from inside `zellij`.
 
@@ -301,7 +308,7 @@ When the target is not a live session, `zjsh` creates or switches to a session u
 - `layout_file` uses the configured zellij layout file
 - `layout` uses a named zellij layout
 - `startup` creates a generated one-pane layout that runs the command through the configured shell
-- path-only entries create a session in that directory
+- `zoxide` path entries create a session in that directory. The session name is the path basename; if that name is already reserved by a project or existing session, `zjsh` uses `basename-<hash(path)>` instead.
 
 Layout and startup precedence:
 

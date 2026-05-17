@@ -51,10 +51,10 @@ func TestListEntriesCanExcludeResurrectable(t *testing.T) {
 			t.Fatalf("unexpected resurrectable entry in default list: %+v", entry)
 		}
 	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries after dedupe, got %d", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("expected project and zoxide action entries, got %d", len(entries))
 	}
-	if entries[0].Name != "api" || len(entries[0].Sources) != 3 {
+	if entries[0].Name != "api" || len(entries[0].Sources) != 2 {
 		t.Fatalf("unexpected merged project entry: %+v", entries[0])
 	}
 	if !entries[0].RestartOnResurrection {
@@ -218,7 +218,7 @@ func TestListEntriesKeepsSameBasenamePathsSeparate(t *testing.T) {
 	}
 }
 
-func TestListEntriesPrefersLiveSessionOverSameBasenamePath(t *testing.T) {
+func TestListEntriesShowsSessionAndSameBasenameZoxidePath(t *testing.T) {
 	agg := Aggregator{
 		Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
 		Zellij: zellij.Provider{Runner: fakeRunner{outputs: map[string]string{
@@ -232,22 +232,18 @@ func TestListEntriesPrefersLiveSessionOverSameBasenamePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected session and zoxide path to merge, got %#v", entries)
+	if len(entries) != 2 {
+		t.Fatalf("expected session and zoxide path action entries, got %#v", entries)
 	}
-	entry := entries[0]
-	if entry.Type != domain.EntrySession || entry.SessionState != domain.SessionStateLive {
-		t.Fatalf("expected live session to win, got %+v", entry)
+	if entries[0].Type != domain.EntrySession || entries[0].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected live session first, got %+v", entries[0])
 	}
-	if entry.Path != "/tmp/foo" || entry.SessionName != "foo" {
-		t.Fatalf("expected zoxide path to be preserved on session entry, got %+v", entry)
-	}
-	if len(entry.Sources) != 2 {
-		t.Fatalf("expected merged sources, got %+v", entry)
+	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/foo" || entries[1].SessionName != "" {
+		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
 	}
 }
 
-func TestListEntriesPrefersProjectSessionOverSameBasenamePath(t *testing.T) {
+func TestListEntriesShowsProjectSessionAndSameBasenameZoxidePath(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.kdl")
 	err := os.WriteFile(configPath, []byte(`project "project-foo" {
   path "/tmp/project/foo"
@@ -271,8 +267,8 @@ func TestListEntriesPrefersProjectSessionOverSameBasenamePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected project session and zoxide path to merge, got %#v", entries)
+	if len(entries) != 2 {
+		t.Fatalf("expected project and zoxide path action entries, got %#v", entries)
 	}
 	entry := entries[0]
 	if entry.Type != domain.EntryProject || entry.Name != "project-foo" || entry.Path != "/tmp/project/foo" {
@@ -281,8 +277,11 @@ func TestListEntriesPrefersProjectSessionOverSameBasenamePath(t *testing.T) {
 	if entry.SessionState != domain.SessionStateLive || entry.SessionName != "foo" {
 		t.Fatalf("expected live session state to be preserved, got %+v", entry)
 	}
-	if len(entry.Sources) != 3 {
+	if len(entry.Sources) != 2 {
 		t.Fatalf("expected merged sources, got %+v", entry)
+	}
+	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/other/foo" || entries[1].SessionName != "" {
+		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
 	}
 }
 
@@ -312,21 +311,21 @@ project "project-zjsh" {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("expected both projects to stay separate, got %#v", entries)
 	}
 	if entries[0].Name != "config-zjsh" || entries[0].Path != "/tmp/config/zjsh" {
 		t.Fatalf("unexpected first project: %+v", entries[0])
 	}
 	if entries[1].Name != "project-zjsh" || entries[1].Path != "/tmp/repos/zjsh" {
-		t.Fatalf("expected zoxide path to merge into project-zjsh, got %+v", entries[1])
+		t.Fatalf("unexpected second project: %+v", entries[1])
 	}
-	if len(entries[1].Sources) != 2 {
-		t.Fatalf("expected project-zjsh to include zoxide source, got %+v", entries[1])
+	if entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/repos/zjsh" {
+		t.Fatalf("expected separate zoxide path action, got %+v", entries[2])
 	}
 }
 
-func TestListEntriesProjectPathBeatsSessionBasenameForZoxidePath(t *testing.T) {
+func TestListEntriesShowsProjectSessionAndSamePathZoxideAction(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.kdl")
 	err := os.WriteFile(configPath, []byte(`project "project-zjsh" {
   path "/tmp/repos/zjsh"
@@ -348,21 +347,21 @@ func TestListEntriesProjectPathBeatsSessionBasenameForZoxidePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("expected project and live session to stay separate, got %#v", entries)
+	if len(entries) != 3 {
+		t.Fatalf("expected project, live session, and zoxide path action, got %#v", entries)
 	}
 	if entries[0].Type != domain.EntryProject || entries[0].Name != "project-zjsh" || entries[0].SessionName != "project-zjsh" {
 		t.Fatalf("expected project to win path identity, got %+v", entries[0])
 	}
-	if len(entries[0].Sources) != 2 {
-		t.Fatalf("expected zoxide path to merge into project, got %+v", entries[0])
-	}
 	if entries[1].Type != domain.EntrySession || entries[1].SessionName != "zjsh" || entries[1].SessionState != domain.SessionStateLive {
 		t.Fatalf("expected live session to remain separate, got %+v", entries[1])
 	}
+	if entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/repos/zjsh" {
+		t.Fatalf("expected separate zoxide path action, got %+v", entries[2])
+	}
 }
 
-func TestListEntriesPrefersProjectWhenSourcesMerge(t *testing.T) {
+func TestListEntriesPrefersProjectWhenSessionMerges(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.kdl")
 	err := os.WriteFile(configPath, []byte(`project "api" {
   path "/tmp/api"
@@ -386,8 +385,8 @@ func TestListEntriesPrefersProjectWhenSourcesMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected merged entry, got %#v", entries)
+	if len(entries) != 2 {
+		t.Fatalf("expected project plus zoxide path action, got %#v", entries)
 	}
 	entry := entries[0]
 	if entry.Type != domain.EntryProject || entry.Name != "api" || entry.Startup != "nvim ." {
@@ -396,7 +395,10 @@ func TestListEntriesPrefersProjectWhenSourcesMerge(t *testing.T) {
 	if entry.SessionState != domain.SessionStateLive {
 		t.Fatalf("expected zellij session state to be preserved, got %+v", entry)
 	}
-	if len(entry.Sources) != 3 {
+	if len(entry.Sources) != 2 {
 		t.Fatalf("expected merged sources, got %+v", entry)
+	}
+	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/api" {
+		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
 	}
 }

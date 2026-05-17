@@ -47,3 +47,35 @@ func TestResolveExactAllowsRestartOnResurrection(t *testing.T) {
 		t.Fatalf("expected restart_on_resurrection entry, got %+v", entry)
 	}
 }
+
+func TestResolveExactPrefersZoxidePathActionForFullPath(t *testing.T) {
+	entries := []domain.Entry{
+		{Name: "api", Type: domain.EntryProject, SessionName: "api", Path: "/tmp/api"},
+		{Name: "api", Type: domain.EntryPath, Path: "/tmp/api"},
+	}
+	entry, err := ResolveExact(entries, "/tmp/api")
+	if err != nil {
+		t.Fatalf("ResolveExact() error = %v", err)
+	}
+	if entry.Type != domain.EntryPath {
+		t.Fatalf("expected zoxide path action for full path, got %+v", entry)
+	}
+}
+
+func TestPrepareConnectEntryUsesBasenameForFreeZoxideSession(t *testing.T) {
+	entry := PrepareConnectEntry(domain.Entry{Type: domain.EntryPath, Path: "/tmp/foo"}, nil)
+	if entry.SessionName != "foo" {
+		t.Fatalf("expected basename session name, got %+v", entry)
+	}
+}
+
+func TestPrepareConnectEntryUsesHashFallbackForReservedZoxideSession(t *testing.T) {
+	entry := PrepareConnectEntry(
+		domain.Entry{Type: domain.EntryPath, Path: "/tmp/foo"},
+		[]domain.Entry{{Type: domain.EntrySession, SessionName: "foo"}},
+	)
+	expected := "foo-" + shortPathHash("/tmp/foo")
+	if entry.SessionName != expected {
+		t.Fatalf("expected fallback session name %q, got %+v", expected, entry)
+	}
+}

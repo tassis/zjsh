@@ -1,8 +1,11 @@
 package service
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/saweima12/zjsh/internal/domain"
 )
@@ -42,9 +45,50 @@ func findSessionName(entries []domain.Entry, target string) (domain.Entry, bool)
 
 func findPath(entries []domain.Entry, target string) (domain.Entry, bool) {
 	for _, entry := range entries {
+		if entry.Type == domain.EntryPath && entry.Path == target {
+			return entry, true
+		}
+	}
+	for _, entry := range entries {
 		if entry.Path == target {
 			return entry, true
 		}
 	}
 	return domain.Entry{}, false
+}
+
+func PrepareConnectEntry(entry domain.Entry, entries []domain.Entry) domain.Entry {
+	if entry.Type != domain.EntryPath || entry.SessionName != "" || entry.Path == "" {
+		return entry
+	}
+	entry.SessionName = zoxideSessionName(entry.Path, entries)
+	return entry
+}
+
+func zoxideSessionName(path string, entries []domain.Entry) string {
+	desired := filepath.Base(path)
+	if desired == "." || desired == string(filepath.Separator) || desired == "" {
+		desired = "zoxide"
+	}
+	if !sessionNameReserved(desired, entries) {
+		return desired
+	}
+	return desired + "-" + shortPathHash(path)
+}
+
+func sessionNameReserved(name string, entries []domain.Entry) bool {
+	for _, entry := range entries {
+		if entry.Type == domain.EntryPath {
+			continue
+		}
+		if entry.SessionName == name {
+			return true
+		}
+	}
+	return false
+}
+
+func shortPathHash(path string) string {
+	sum := sha1.Sum([]byte(path))
+	return hex.EncodeToString(sum[:])[:8]
 }
