@@ -20,6 +20,20 @@ func TestResolveExactOrder(t *testing.T) {
 	}
 }
 
+func TestResolveExactCurrentDirBeatsDotNamedProject(t *testing.T) {
+	entries := []domain.Entry{
+		{Name: ".", Type: domain.EntryProject, SessionName: "dot-project", Path: "/tmp/project"},
+		{Name: ".", Type: domain.EntryPath, Path: "/tmp/here", CurrentDir: true},
+	}
+	entry, err := ResolveExact(entries, ".")
+	if err != nil {
+		t.Fatalf("ResolveExact() error = %v", err)
+	}
+	if !entry.CurrentDir || entry.Path != "/tmp/here" {
+		t.Fatalf("expected current dir entry, got %+v", entry)
+	}
+}
+
 func TestResolveExactAllowsResurrectableByDefault(t *testing.T) {
 	entries := []domain.Entry{{Name: "old", Type: domain.EntrySession, SessionName: "old", SessionState: domain.SessionStateResurrectable}}
 	entry, err := ResolveExact(entries, "old")

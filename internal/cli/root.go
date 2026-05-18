@@ -15,6 +15,7 @@ import (
 	"github.com/saweima12/zjsh/internal/provider/zellij"
 	"github.com/saweima12/zjsh/internal/provider/zoxide"
 	"github.com/saweima12/zjsh/internal/service"
+	"github.com/saweima12/zjsh/internal/version"
 	"github.com/saweima12/zjsh/internal/view"
 )
 
@@ -51,6 +52,12 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return 1
 	}
 	switch args[0] {
+	case "version", "--version", "-version":
+		if err := a.runVersion(args[1:]); err != nil {
+			_, _ = fmt.Fprintf(a.Stderr, "error: %v\n", err)
+			return 1
+		}
+		return 0
 	case "list":
 		if err := a.runList(ctx, args[1:]); err != nil {
 			_, _ = fmt.Fprintf(a.Stderr, "error: %v\n", err)
@@ -80,6 +87,14 @@ func (a App) Run(ctx context.Context, args []string) int {
 		a.printUsage()
 		return 1
 	}
+}
+
+func (a App) runVersion(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: zjsh version")
+	}
+	_, err := fmt.Fprintln(a.Stdout, version.String())
+	return err
 }
 
 func (a App) runList(ctx context.Context, args []string) error {
@@ -132,6 +147,7 @@ func (a App) printUsage() {
 	_, _ = fmt.Fprintln(a.Stderr, "commands:")
 	_, _ = fmt.Fprintln(a.Stderr, "  list      list aggregated entries")
 	_, _ = fmt.Fprintln(a.Stderr, "  connect   connect to a session or project")
+	_, _ = fmt.Fprintln(a.Stderr, "  version   print version")
 	_, _ = fmt.Fprintln(a.Stderr, "  doctor    validate dependencies and config")
 	_, _ = fmt.Fprintln(a.Stderr, "  config    manage config scaffolding")
 }
@@ -146,9 +162,17 @@ func (a App) runDoctor(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: zjsh doctor")
 	}
 	checks := make([]doctorCheck, 0, 8)
-	checks = append(checks, a.binaryCheck("zellij"))
-	checks = append(checks, a.binaryCheck("zoxide"))
 
+	// zellij is the only required runtime dependency. Without it, zjsh
+	// cannot list, switch, attach, create, or resurrect sessions.
+	checks = append(checks, a.binaryCheck("zellij"))
+
+	// zoxide is an optional list source. Missing zoxide should be visible
+	// to the user, but it must not make doctor fail.
+	checks = append(checks, a.optionalBinaryCheck("zoxide"))
+
+	// A missing config file is valid: users can still use live sessions,
+	// resurrectable sessions, zoxide paths, and the built-in `.` entry.
 	configPath, err := a.Aggregator.Config.ResolvedPath()
 	if err != nil {
 		return err
@@ -167,6 +191,9 @@ func (a App) runDoctor(ctx context.Context, args []string) error {
 	}
 	checks = append(checks, doctorCheck{Status: doctorOK, Label: "config", Detail: configPath})
 
+	// If the config file exists, it must be parseable and semantically valid.
+	// This catches invalid KDL, invalid required values, and invalid project
+	// path modes such as `path` plus `cwd true`.
 	config, err := a.Aggregator.Config.Load(ctx)
 	if err != nil {
 		checks = append(checks, doctorCheck{Status: doctorFail, Label: "config parse", Detail: err.Error()})
@@ -174,19 +201,28 @@ func (a App) runDoctor(ctx context.Context, args []string) error {
 	}
 	checks = append(checks, doctorCheck{Status: doctorOK, Label: "config parse", Detail: "ok"})
 	for _, project := range config.Projects {
-		path, expandErr := platform.ExpandHome(project.Path)
-		if expandErr != nil {
-			checks = append(checks, doctorCheck{Status: doctorFail, Label: "project path", Detail: fmt.Sprintf("%s: %v", project.Name, expandErr)})
-			continue
-		}
-		if _, statErr := os.Stat(path); statErr != nil {
-			checks = append(checks, doctorCheck{Status: doctorFail, Label: "project path", Detail: fmt.Sprintf("%s: %s", project.Name, path)})
+		// `cwd true` projects use the runtime current directory, so there is no
+		// static project path to check during doctor.
+		if project.CWD {
+			checks = append(checks, doctorCheck{Status: doctorOK, Label: "project path", Detail: fmt.Sprintf("%s: runtime cwd", project.Name)})
 		} else {
-			checks = append(checks, doctorCheck{Status: doctorOK, Label: "project path", Detail: fmt.Sprintf("%s: %s", project.Name, path)})
+			// Static project paths should expand successfully and exist on disk.
+			path, expandErr := platform.ExpandHome(project.Path)
+			if expandErr != nil {
+				checks = append(checks, doctorCheck{Status: doctorFail, Label: "project path", Detail: fmt.Sprintf("%s: %v", project.Name, expandErr)})
+				continue
+			}
+			if _, statErr := os.Stat(path); statErr != nil {
+				checks = append(checks, doctorCheck{Status: doctorFail, Label: "project path", Detail: fmt.Sprintf("%s: %s", project.Name, path)})
+			} else {
+				checks = append(checks, doctorCheck{Status: doctorOK, Label: "project path", Detail: fmt.Sprintf("%s: %s", project.Name, path)})
+			}
 		}
 		if project.LayoutFile == "" {
 			continue
 		}
+
+		// layout_file is optional, but when configured it must expand and exist.
 		layoutPath, expandErr := platform.ExpandHome(project.LayoutFile)
 		if expandErr != nil {
 			checks = append(checks, doctorCheck{Status: doctorFail, Label: "layout file", Detail: fmt.Sprintf("%s: %v", project.Name, expandErr)})
@@ -207,6 +243,14 @@ func (a App) binaryCheck(name string) doctorCheck {
 		return doctorCheck{Status: doctorFail, Label: name, Detail: err.Error()}
 	}
 	return doctorCheck{Status: doctorOK, Label: name, Detail: path}
+}
+
+func (a App) optionalBinaryCheck(name string) doctorCheck {
+	path, err := a.Runner.LookPath(name)
+	if err != nil {
+		return doctorCheck{Status: doctorWarn, Label: name, Detail: err.Error() + " (optional)"}
+	}
+	return doctorCheck{Status: doctorOK, Label: name, Detail: path + " (optional)"}
 }
 
 func (a App) runConfig(_ context.Context, args []string) error {

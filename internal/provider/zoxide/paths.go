@@ -2,7 +2,6 @@ package zoxide
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/saweima12/zjsh/internal/platform"
@@ -14,14 +13,11 @@ type Provider struct {
 
 func (p Provider) ListPaths(ctx context.Context) ([]string, error) {
 	if _, err := p.Runner.LookPath("zoxide"); err != nil {
-		if errors.Is(err, platform.ErrCommandNotFound) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, nil
 	}
 	out, err := p.Runner.Run(ctx, "zoxide", "query", "-l")
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	return ParsePaths(string(out)), nil
 }

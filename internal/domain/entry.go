@@ -21,6 +21,7 @@ type Entry struct {
 	Type                  EntryType    `json:"type"`
 	Sources               []string     `json:"sources"`
 	Path                  string       `json:"path,omitempty"`
+	CurrentDir            bool         `json:"current_dir,omitempty"`
 	SessionName           string       `json:"session_name,omitempty"`
 	SessionState          SessionState `json:"session_state,omitempty"`
 	Shell                 string       `json:"shell,omitempty"`
@@ -29,5 +30,6 @@ type Entry struct {
 	LayoutFile            string       `json:"layout_file,omitempty"`
 	RestartOnResurrection bool         `json:"restart_on_resurrection,omitempty"`
 	Score                 int          `json:"score"`
+	SortRank              int          `json:"sort_rank"`
 	Order                 int          `json:"-"`
 }

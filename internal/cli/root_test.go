@@ -84,6 +84,85 @@ func TestListJSON(t *testing.T) {
 	}
 }
 
+func TestListFailsWhenZellijMissing(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{errs: map[string]error{"lookpath:zellij": fmt.Errorf("%w: zellij", platform.ErrCommandNotFound)}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"list"}); code == 0 {
+		t.Fatalf("expected list to fail when zellij is missing")
+	}
+	if !strings.Contains(stderr.String(), "command not found") {
+		t.Fatalf("expected missing zellij error, got %q", stderr.String())
+	}
+}
+
+func TestConnectFailsWhenZellijMissing(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{errs: map[string]error{"lookpath:zellij": fmt.Errorf("%w: zellij", platform.ErrCommandNotFound)}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"connect", "."}); code == 0 {
+		t.Fatalf("expected connect to fail when zellij is missing")
+	}
+	if !strings.Contains(stderr.String(), "command not found") {
+		t.Fatalf("expected missing zellij error, got %q", stderr.String())
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: &stderr}
+	if code := app.Run(context.Background(), []string{"version"}); code != 0 {
+		t.Fatalf("expected version success, stderr=%q", stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "zjsh dev" {
+		t.Fatalf("unexpected version output: %q", stdout.String())
+	}
+}
+
+func TestVersionFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: &stderr}
+	if code := app.Run(context.Background(), []string{"--version"}); code != 0 {
+		t.Fatalf("expected --version success, stderr=%q", stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "zjsh dev" {
+		t.Fatalf("unexpected version output: %q", stdout.String())
+	}
+}
+
+func TestVersionRejectsArgs(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: &stderr}
+	if code := app.Run(context.Background(), []string{"version", "extra"}); code == 0 {
+		t.Fatalf("expected version with args to fail")
+	}
+	if !strings.Contains(stderr.String(), "usage: zjsh version") {
+		t.Fatalf("expected usage error, got %q", stderr.String())
+	}
+}
+
 func TestListTextUsesSinglePlainColumnByDefault(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -108,13 +187,13 @@ func TestListTextUsesSinglePlainColumnByDefault(t *testing.T) {
 		t.Fatalf("expected selector-only output, got: %s", got)
 	}
 	lines := strings.Split(got, "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 selectors, got %d: %q", len(lines), got)
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 selectors, got %d: %q", len(lines), got)
 	}
 	if lines[0] != "api" {
 		t.Fatalf("expected first selector to be project/session name, got %q", lines[0])
 	}
-	if lines[1] != "/tmp/api" || lines[2] != "/tmp/notes" {
+	if lines[1] != "/tmp/api" || lines[2] != "/tmp/notes" || lines[3] != "." {
 		t.Fatalf("expected zoxide path action selectors, got %q", lines[1:])
 	}
 }
@@ -140,7 +219,7 @@ func TestListTextShowsIconsWithFlag(t *testing.T) {
 	}
 	got := strings.TrimSpace(stdout.String())
 	lines := strings.Split(got, "\n")
-	if lines[0] != "◆ api" || lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" {
+	if lines[0] != "◆ api" || lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" || lines[3] != "→ ." {
 		t.Fatalf("expected icon labels, got %q", got)
 	}
 }
@@ -157,7 +236,9 @@ func TestListTextUsesConfiguredIconsWithFlag(t *testing.T) {
   icon_path "Z"
 }
 
-project "api" { path "/tmp/api" }
+project "api" {
+  path "/tmp/api"
+}
 `), 0o644)
 	if err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -179,7 +260,7 @@ project "api" { path "/tmp/api" }
 		t.Fatalf("Run() code = %d stderr=%s", code, stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "P api\nR old\nZ /tmp/notes" {
+	if got != "P api\nR old\nZ /tmp/notes\nZ ." {
 		t.Fatalf("expected configured icon labels, got %q", got)
 	}
 }
@@ -324,6 +405,68 @@ func TestConnectZoxidePathLabelUsesHashFallbackWhenSessionExists(t *testing.T) {
 	}
 }
 
+func TestConnectCurrentDirectory(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "",
+		"zoxide query -l":         "",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			CWD:    "/tmp/here",
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"connect", "."}); code != 0 {
+		t.Fatalf("expected connect . success, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij attach -c here options --default-cwd /tmp/here" {
+		t.Fatalf("unexpected connect command: %#v", runner.calls)
+	}
+}
+
+func TestConnectCWDProjectUsesConfiguredSession(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "here" {
+  cwd true
+  session "work"
+  layout "compact"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	runner := &fakeRunner{outputs: map[string]string{
+		"zellij list-sessions -n": "",
+		"zoxide query -l":         "",
+	}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			CWD:    "/tmp/runtime",
+			Config: config.Loader{Path: configPath},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+		Launcher: service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"connect", "here"}); code != 0 {
+		t.Fatalf("expected connect cwd project success, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij attach -c work options --default-layout compact --default-cwd /tmp/runtime" {
+		t.Fatalf("unexpected connect command: %#v", runner.calls)
+	}
+}
+
 func TestListTextShowsZoxidePathWhenExistingSessionHasSameBasename(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -344,8 +487,30 @@ func TestListTextShowsZoxidePathWhenExistingSessionHasSameBasename(t *testing.T)
 		t.Fatalf("expected list success, stderr=%q", stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "foo\n/tmp/foo" {
+	if got != "foo\n/tmp/foo\n." {
 		t.Fatalf("expected session and zoxide path action selectors, got %q", got)
+	}
+}
+
+func TestDoctorWarnsWhenZoxideMissing(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{errs: map[string]error{"lookpath:zoxide": fmt.Errorf("%w: zoxide", platform.ErrCommandNotFound)}}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Runner: runner,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"doctor"}); code != 0 {
+		t.Fatalf("expected doctor to succeed with optional zoxide warning, stderr=%q stdout=%q", stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "[WARN] zoxide") {
+		t.Fatalf("expected zoxide warning, got %q", stdout.String())
 	}
 }
 
@@ -376,7 +541,10 @@ func TestDoctorFailsOnMissingProjectPath(t *testing.T) {
 	var stderr bytes.Buffer
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.kdl")
-	err := os.WriteFile(configPath, []byte(`project "missing" { path "/tmp/definitely-missing-zjsh-path" }`), 0o644)
+	err := os.WriteFile(configPath, []byte(`project "missing" {
+  path "/tmp/definitely-missing-zjsh-path"
+}
+`), 0o644)
 	if err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -399,6 +567,37 @@ func TestDoctorFailsOnMissingProjectPath(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "doctor found 1 failing checks") {
 		t.Fatalf("expected summary error in stderr, got %q", stderr.String())
+	}
+}
+
+func TestDoctorChecksLayoutFileForCWDProject(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`project "here" {
+  cwd true
+  layout_file "/tmp/definitely-missing-zjsh-layout.kdl"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	runner := &fakeRunner{}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Runner: runner,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: configPath},
+			Zellij: zellij.Provider{Runner: runner},
+			Zoxide: zoxide.Provider{Runner: runner},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"doctor"}); code == 0 {
+		t.Fatalf("expected doctor to fail for missing layout_file")
+	}
+	if !strings.Contains(stdout.String(), "[OK] project path: here: runtime cwd") || !strings.Contains(stdout.String(), "[FAIL] layout file") {
+		t.Fatalf("expected cwd project path ok and layout file fail, got %q", stdout.String())
 	}
 }
 

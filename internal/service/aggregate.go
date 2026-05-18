@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -16,12 +17,19 @@ const (
 	liveSessionScore   = 300
 	resurrectableScore = 200
 	pathScore          = 100
+
+	liveSessionSortRank   = 500
+	projectSortRank       = 400
+	resurrectableSortRank = 300
+	pathSortRank          = 200
+	currentDirSortRank    = 100
 )
 
 type Aggregator struct {
 	Config configprovider.Loader
 	Zellij zellij.Provider
 	Zoxide zoxide.Provider
+	CWD    string
 }
 
 type ListResult struct {
@@ -38,6 +46,10 @@ func (a Aggregator) ListEntries(ctx context.Context, includeResurrectable bool) 
 }
 
 func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListResult, error) {
+	cwd, err := a.currentWorkingDir()
+	if err != nil {
+		return ListResult{}, err
+	}
 	config, err := a.Config.Load(ctx)
 	if err != nil {
 		return ListResult{}, err
@@ -51,12 +63,16 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 		return ListResult{}, err
 	}
 
-	entries := make([]domain.Entry, 0, len(config.Projects)+len(sessions)+len(paths))
+	entries := make([]domain.Entry, 0, len(config.Projects)+len(sessions)+len(paths)+1)
 	order := 0
 	for _, project := range config.Projects {
 		sessionName := project.Session
 		if sessionName == "" {
 			sessionName = project.Name
+		}
+		path := project.Path
+		if project.CWD {
+			path = cwd
 		}
 		restartOnResurrection := config.Defaults.RestartOnResurrection
 		if project.RestartOnResurrection != nil {
@@ -66,7 +82,7 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 			Name:                  project.Name,
 			Type:                  domain.EntryProject,
 			Sources:               []string{"config"},
-			Path:                  project.Path,
+			Path:                  path,
 			SessionName:           sessionName,
 			Shell:                 config.Defaults.Shell,
 			Startup:               project.Startup,
@@ -74,6 +90,7 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 			LayoutFile:            project.LayoutFile,
 			RestartOnResurrection: restartOnResurrection,
 			Score:                 projectScore,
+			SortRank:              projectSortRank,
 			Order:                 order,
 		})
 		order++
@@ -86,6 +103,10 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 		if session.State == domain.SessionStateResurrectable {
 			score = resurrectableScore
 		}
+		sortRank := liveSessionSortRank
+		if session.State == domain.SessionStateResurrectable {
+			sortRank = resurrectableSortRank
+		}
 		entries = append(entries, domain.Entry{
 			Name:         session.Name,
 			Type:         domain.EntrySession,
@@ -93,22 +114,61 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 			SessionName:  session.Name,
 			SessionState: session.State,
 			Score:        score,
+			SortRank:     sortRank,
 			Order:        order,
 		})
 		order++
 	}
+	currentDirSources := []string{"cwd"}
 	for _, path := range paths {
+		if samePath(path, cwd) {
+			currentDirSources = append(currentDirSources, "zoxide")
+			continue
+		}
 		entries = append(entries, domain.Entry{
-			Name:    filepath.Base(path),
-			Type:    domain.EntryPath,
-			Sources: []string{"zoxide"},
-			Path:    path,
-			Score:   pathScore,
-			Order:   order,
+			Name:     filepath.Base(path),
+			Type:     domain.EntryPath,
+			Sources:  []string{"zoxide"},
+			Path:     path,
+			Score:    pathScore,
+			SortRank: pathSortRank,
+			Order:    order,
 		})
 		order++
 	}
+	entries = append(entries, domain.Entry{
+		Name:       ".",
+		Type:       domain.EntryPath,
+		Sources:    currentDirSources,
+		Path:       cwd,
+		CurrentDir: true,
+		Score:      pathScore,
+		SortRank:   currentDirSortRank,
+		Order:      order,
+	})
 	return ListResult{Entries: dedupeEntries(entries), Config: config}, nil
+}
+
+func (a Aggregator) currentWorkingDir() (string, error) {
+	if a.CWD != "" {
+		return filepath.Abs(a.CWD)
+	}
+	return os.Getwd()
+}
+
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, err := filepath.Abs(a)
+	if err != nil {
+		absA = a
+	}
+	absB, err := filepath.Abs(b)
+	if err != nil {
+		absB = b
+	}
+	return filepath.Clean(absA) == filepath.Clean(absB)
 }
 
 func dedupeEntries(entries []domain.Entry) []domain.Entry {
@@ -134,8 +194,8 @@ func dedupeEntries(entries []domain.Entry) []domain.Entry {
 		result = append(result, merged[key])
 	}
 	sort.Slice(result, func(i, j int) bool {
-		if result[i].Score != result[j].Score {
-			return result[i].Score > result[j].Score
+		if result[i].SortRank != result[j].SortRank {
+			return result[i].SortRank > result[j].SortRank
 		}
 		return result[i].Order < result[j].Order
 	})
@@ -152,6 +212,10 @@ func canonicalKey(entry domain.Entry, aliases map[string]string, merged map[stri
 		return primaryKey(entry)
 	}
 
+	if entry.CurrentDir && entry.Path != "" {
+		return "cwd:" + entry.Path
+	}
+
 	if entry.Type == domain.EntryPath && entry.Path != "" {
 		return "zoxide:" + entry.Path
 	}
@@ -165,14 +229,21 @@ func canonicalKey(entry domain.Entry, aliases map[string]string, merged map[stri
 }
 
 func projectIdentityKeys(entry domain.Entry) []string {
-	keys := make([]string, 0, 2)
+	keys := make([]string, 0, 3)
 	if entry.Path != "" {
 		keys = append(keys, "path:"+entry.Path)
 	}
-	if entry.Name != "" {
+	if entry.SessionName != "" {
+		keys = append(keys, "session:"+entry.SessionName)
+	}
+	if projectUsesDefaultSessionName(entry) && entry.Name != "" {
 		keys = append(keys, "name:"+entry.Name)
 	}
 	return keys
+}
+
+func projectUsesDefaultSessionName(entry domain.Entry) bool {
+	return entry.Type == domain.EntryProject && (entry.SessionName == "" || entry.SessionName == entry.Name)
 }
 
 func primaryKey(entry domain.Entry) string {
@@ -187,6 +258,9 @@ func primaryKey(entry domain.Entry) string {
 
 func identifierKeys(entry domain.Entry) []string {
 	if entry.Type == domain.EntryPath && entry.Path != "" {
+		if entry.CurrentDir {
+			return []string{"cwd:" + entry.Path}
+		}
 		return []string{"zoxide:" + entry.Path}
 	}
 
@@ -197,7 +271,7 @@ func identifierKeys(entry domain.Entry) []string {
 	if entry.SessionName != "" {
 		keys = append(keys, "session:"+entry.SessionName)
 	}
-	if entry.Name != "" {
+	if entry.Name != "" && (entry.Type != domain.EntryProject || projectUsesDefaultSessionName(entry)) {
 		keys = append(keys, "name:"+entry.Name)
 	}
 	return keys
@@ -211,6 +285,7 @@ func registerAliases(aliases map[string]string, canonical string, entry domain.E
 
 func normalizeEntry(entry domain.Entry) domain.Entry {
 	entry.Sources = uniqueSorted(entry.Sources)
+	entry.SortRank = effectiveSortRank(entry)
 	return entry
 }
 
@@ -250,10 +325,36 @@ func mergeEntries(existing, incoming domain.Entry) domain.Entry {
 	if merged.Score < secondary.Score {
 		merged.Score = secondary.Score
 	}
+	if secondary.SortRank > merged.SortRank {
+		merged.SortRank = secondary.SortRank
+	}
+	merged.SortRank = effectiveSortRank(merged)
 	if secondary.Order < merged.Order {
 		merged.Order = secondary.Order
 	}
 	return merged
+}
+
+func effectiveSortRank(entry domain.Entry) int {
+	if entry.Type == domain.EntryProject {
+		if entry.SessionState == domain.SessionStateLive {
+			return liveSessionSortRank
+		}
+		return projectSortRank
+	}
+	if entry.CurrentDir {
+		return currentDirSortRank
+	}
+	if entry.Type == domain.EntryPath {
+		return pathSortRank
+	}
+	if entry.SessionState == domain.SessionStateLive {
+		return liveSessionSortRank
+	}
+	if entry.SessionState == domain.SessionStateResurrectable {
+		return resurrectableSortRank
+	}
+	return entry.SortRank
 }
 
 func uniqueSorted(values []string) []string {

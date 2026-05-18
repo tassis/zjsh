@@ -8,6 +8,8 @@ import (
 
 	"github.com/saweima12/zjsh/internal/domain"
 	"github.com/saweima12/zjsh/internal/platform"
+	kdl "github.com/sblinch/kdl-go"
+	"github.com/sblinch/kdl-go/document"
 )
 
 type Loader struct {
@@ -48,11 +50,13 @@ func (l Loader) Load(context.Context) (domain.Config, error) {
 func normalizeConfigPaths(config domain.Config) (domain.Config, error) {
 	for i := range config.Projects {
 		project := &config.Projects[i]
-		path, err := platform.ExpandHome(project.Path)
-		if err != nil {
-			return domain.Config{}, fmt.Errorf("project %q: path: %w", project.Name, err)
+		if project.Path != "" {
+			path, err := platform.ExpandHome(project.Path)
+			if err != nil {
+				return domain.Config{}, fmt.Errorf("project %q: path: %w", project.Name, err)
+			}
+			project.Path = path
 		}
-		project.Path = path
 
 		if project.LayoutFile == "" {
 			continue
@@ -67,35 +71,77 @@ func normalizeConfigPaths(config domain.Config) (domain.Config, error) {
 }
 
 func parseConfig(input string) (domain.Config, error) {
-	p := parser{tokens: tokenize(input)}
 	config := defaultConfig()
+	doc, err := kdl.Parse(strings.NewReader(input))
+	if err != nil {
+		return domain.Config{}, err
+	}
+	if err := validateStrictBooleanNodes(doc.Nodes); err != nil {
+		return domain.Config{}, err
+	}
+	var raw rawConfig
+	dec := kdl.NewDecoder(strings.NewReader(input))
+	dec.Options.AllowUnhandledNodes = true
+	if err := dec.Decode(&raw); err != nil {
+		return domain.Config{}, err
+	}
+	config.Defaults = defaultsWithFallback(config.Defaults, raw.Defaults.toDomain())
+	projects, err := raw.projects()
+	if err != nil {
+		return domain.Config{}, err
+	}
+	config.Projects = projects
+	return config, nil
+}
 
-	for !p.done() {
-		node, err := p.nextNode()
-		if err != nil {
-			return domain.Config{}, err
-		}
-		switch node.name {
+func validateStrictBooleanNodes(nodes []*document.Node) error {
+	for _, node := range nodes {
+		switch nodeName(node) {
 		case "defaults":
-			defaults, err := decodeDefaults(node)
-			if err != nil {
-				return domain.Config{}, err
+			for _, child := range node.Children {
+				if nodeName(child) == "restart_on_resurrection" {
+					if err := validateBooleanNode(child, "defaults.restart_on_resurrection"); err != nil {
+						return err
+					}
+				}
 			}
-			config.Defaults = defaultsWithFallback(config.Defaults, defaults)
 		case "project":
-			project, err := decodeProject(node)
-			if err != nil {
-				return domain.Config{}, err
+			projectName := "project"
+			if len(node.Arguments) > 0 {
+				projectName = fmt.Sprintf("project %q", node.Arguments[0].Value)
 			}
-			if project.Path == "" {
-				return domain.Config{}, fmt.Errorf("project %q: path is required", project.Name)
+			for _, child := range node.Children {
+				switch nodeName(child) {
+				case "cwd", "restart_on_resurrection":
+					if err := validateBooleanNode(child, projectName+"."+nodeName(child)); err != nil {
+						return err
+					}
+				}
 			}
-			config.Projects = append(config.Projects, project)
-		default:
-			return domain.Config{}, fmt.Errorf("unsupported top-level node %q", node.name)
 		}
 	}
-	return config, nil
+	return nil
+}
+
+func validateBooleanNode(node *document.Node, label string) error {
+	if len(node.Arguments) != 1 {
+		return fmt.Errorf("%s: expected a single boolean value", label)
+	}
+	if _, ok := node.Arguments[0].Value.(bool); !ok {
+		return fmt.Errorf("%s: expected boolean value", label)
+	}
+	return nil
+}
+
+func nodeName(node *document.Node) string {
+	if node == nil || node.Name == nil {
+		return ""
+	}
+	name, ok := node.Name.Value.(string)
+	if !ok {
+		return ""
+	}
+	return name
 }
 
 func defaultConfig() domain.Config {
@@ -133,193 +179,67 @@ func iconsWithFallback(base, parsed domain.Icons) domain.Icons {
 	return base
 }
 
-type node struct {
-	name string
-	args []string
-	body map[string]string
+type rawConfig struct {
+	Defaults rawDefaults  `kdl:"defaults"`
+	Projects []rawProject `kdl:"project,multiple"`
 }
 
-func decodeDefaults(n node) (domain.Defaults, error) {
-	var defaults domain.Defaults
-	for key, value := range n.body {
-		switch key {
-		case "shell":
-			defaults.Shell = value
-		case "restart_on_resurrection":
-			defaults.RestartOnResurrection = value == "true"
-		case "icon_project":
-			defaults.Icons.Project = value
-		case "icon_session":
-			defaults.Icons.Session = value
-		case "icon_resurrectable":
-			defaults.Icons.Resurrectable = value
-		case "icon_path":
-			defaults.Icons.Path = value
-		default:
-			return domain.Defaults{}, fmt.Errorf("defaults: unsupported key %q", key)
+type rawDefaults struct {
+	Shell                 string `kdl:"shell"`
+	RestartOnResurrection bool   `kdl:"restart_on_resurrection"`
+	IconProject           string `kdl:"icon_project"`
+	IconSession           string `kdl:"icon_session"`
+	IconResurrectable     string `kdl:"icon_resurrectable"`
+	IconPath              string `kdl:"icon_path"`
+}
+
+func (d rawDefaults) toDomain() domain.Defaults {
+	return domain.Defaults{
+		Shell:                 d.Shell,
+		RestartOnResurrection: d.RestartOnResurrection,
+		Icons: domain.Icons{
+			Project:       d.IconProject,
+			Session:       d.IconSession,
+			Resurrectable: d.IconResurrectable,
+			Path:          d.IconPath,
+		},
+	}
+}
+
+type rawProject struct {
+	Name                  string `kdl:",arg"`
+	Path                  string `kdl:"path"`
+	CWD                   bool   `kdl:"cwd"`
+	Session               string `kdl:"session"`
+	Startup               string `kdl:"startup"`
+	Layout                string `kdl:"layout"`
+	LayoutFile            string `kdl:"layout_file"`
+	RestartOnResurrection *bool  `kdl:"restart_on_resurrection"`
+}
+
+func (c rawConfig) projects() ([]domain.Project, error) {
+	projects := make([]domain.Project, 0, len(c.Projects))
+	for _, raw := range c.Projects {
+		project := domain.Project{
+			Name:                  strings.TrimSpace(raw.Name),
+			Path:                  raw.Path,
+			CWD:                   raw.CWD,
+			Session:               raw.Session,
+			Startup:               raw.Startup,
+			Layout:                raw.Layout,
+			LayoutFile:            raw.LayoutFile,
+			RestartOnResurrection: raw.RestartOnResurrection,
 		}
-	}
-	return defaults, nil
-}
-
-func decodeProject(n node) (domain.Project, error) {
-	if len(n.args) != 1 {
-		return domain.Project{}, fmt.Errorf("project node requires a single name argument")
-	}
-	project := domain.Project{Name: n.args[0]}
-	for key, value := range n.body {
-		switch key {
-		case "path":
-			project.Path = value
-		case "session":
-			project.Session = value
-		case "startup":
-			project.Startup = value
-		case "layout":
-			project.Layout = value
-		case "layout_file":
-			project.LayoutFile = value
-		case "restart_on_resurrection":
-			restart := value == "true"
-			project.RestartOnResurrection = &restart
-		default:
-			return domain.Project{}, fmt.Errorf("project %q: unsupported key %q", project.Name, key)
+		if project.Name == "" {
+			return nil, fmt.Errorf("project node requires a single name argument")
 		}
-	}
-	return project, nil
-}
-
-type parser struct {
-	tokens []string
-	pos    int
-}
-
-func (p *parser) done() bool {
-	return p.pos >= len(p.tokens)
-}
-
-func (p *parser) nextNode() (node, error) {
-	name, err := p.consumeIdent()
-	if err != nil {
-		return node{}, err
-	}
-	n := node{name: name, body: map[string]string{}}
-	for !p.done() && p.peek() != "{" {
-		arg, err := p.consumeValue()
-		if err != nil {
-			return node{}, err
+		if project.Path != "" && project.CWD {
+			return nil, fmt.Errorf("project %q: path and cwd are mutually exclusive", project.Name)
 		}
-		n.args = append(n.args, arg)
-	}
-	if _, err := p.consume("{"); err != nil {
-		return node{}, err
-	}
-	for !p.done() && p.peek() != "}" {
-		key, err := p.consumeIdent()
-		if err != nil {
-			return node{}, err
+		if project.Path == "" && !project.CWD {
+			return nil, fmt.Errorf("project %q: path or cwd true is required", project.Name)
 		}
-		value, err := p.consumeValue()
-		if err != nil {
-			return node{}, err
-		}
-		n.body[key] = value
+		projects = append(projects, project)
 	}
-	if _, err := p.consume("}"); err != nil {
-		return node{}, err
-	}
-	return n, nil
-}
-
-func (p *parser) consume(expected string) (string, error) {
-	if p.done() {
-		return "", fmt.Errorf("expected %q, got EOF", expected)
-	}
-	tok := p.tokens[p.pos]
-	if tok != expected {
-		return "", fmt.Errorf("expected %q, got %q", expected, tok)
-	}
-	p.pos++
-	return tok, nil
-}
-
-func (p *parser) consumeIdent() (string, error) {
-	if p.done() {
-		return "", fmt.Errorf("expected identifier, got EOF")
-	}
-	tok := p.tokens[p.pos]
-	if tok == "{" || tok == "}" {
-		return "", fmt.Errorf("expected identifier, got %q", tok)
-	}
-	p.pos++
-	return tok, nil
-}
-
-func (p *parser) consumeValue() (string, error) {
-	return p.consumeIdent()
-}
-
-func (p *parser) peek() string {
-	if p.done() {
-		return ""
-	}
-	return p.tokens[p.pos]
-}
-
-func tokenize(input string) []string {
-	var tokens []string
-	for i := 0; i < len(input); {
-		switch input[i] {
-		case ' ', '\t', '\n', '\r':
-			i++
-		case '{', '}':
-			tokens = append(tokens, input[i:i+1])
-			i++
-		case '"':
-			value, next := scanQuoted(input, i)
-			tokens = append(tokens, value)
-			i = next
-		case '/':
-			if i+1 < len(input) && input[i+1] == '/' {
-				i = skipToLineEnd(input, i+2)
-				continue
-			}
-			fallthrough
-		default:
-			start := i
-			for i < len(input) && !strings.ContainsRune(" \t\n\r{}", rune(input[i])) {
-				if input[i] == '/' && i+1 < len(input) && input[i+1] == '/' {
-					break
-				}
-				i++
-			}
-			tokens = append(tokens, input[start:i])
-		}
-	}
-	return tokens
-}
-
-func scanQuoted(input string, start int) (string, int) {
-	var b strings.Builder
-	for i := start + 1; i < len(input); i++ {
-		if input[i] == '\\' && i+1 < len(input) {
-			b.WriteByte(input[i+1])
-			i++
-			continue
-		}
-		if input[i] == '"' {
-			return b.String(), i + 1
-		}
-		b.WriteByte(input[i])
-	}
-	return b.String(), len(input)
-}
-
-func skipToLineEnd(input string, start int) int {
-	for i := start; i < len(input); i++ {
-		if input[i] == '\n' {
-			return i + 1
-		}
-	}
-	return len(input)
+	return projects, nil
 }

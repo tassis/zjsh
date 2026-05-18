@@ -1,159 +1,96 @@
 # zjsh
 
-https://github.com/user-attachments/assets/cf4e0979-5ad8-4e52-960b-3881faf552e2
+[https://github.com/user-attachments/assets/cf4e0979-5ad8-4e52-960b-3881faf552e2](https://github.com/user-attachments/assets/cf4e0979-5ad8-4e52-960b-3881faf552e2)
 
+A sesh-like session launcher for `zellij`.
 
-`zjsh` is a selector-friendly launcher for `zellij` sessions and projects.
+`zjsh` collects configured projects, live `zellij` sessions, resurrectable sessions, optional `zoxide` paths, and the current directory into one selector-friendly list.
 
-It is a `zellij`-focused alternative to [`sesh`](https://github.com/joshmedeski/sesh), and borrows heavily from `sesh`'s idea of collecting sessions and projects into one fuzzy-selectable workflow.
+`zjsh` does not provide its own TUI. It is meant to compose with `fzf`, `gum`, shell scripts, and `zellij` keybindings.
 
-`zjsh` aggregates configured projects, live `zellij` sessions, resurrectable `zellij` sessions, and `zoxide` paths into one list. Pick one entry with `fzf`, `gum`, or another selector, then pass the selected label back to `zjsh connect`.
+```sh
+choice=$(zjsh list -i | fzf --prompt='zjsh> ')
+[ -n "$choice" ] && zjsh connect "$choice"
+```
 
-`zjsh` does not provide its own TUI. It is designed to compose with shell commands and `zellij` keybindings.
+## Features
 
-## Motivation
-
-[`sesh`](https://github.com/joshmedeski/sesh) provides a fast selector-first workflow for jumping between terminal sessions and projects. `zjsh` applies the same idea to `zellij`.
-
-Use `zjsh` when you want to:
-
-- collect configured projects, active `zellij` sessions, resurrectable sessions, and `zoxide` paths in one list
-- choose a target with your preferred selector instead of a built-in UI
-- attach to an existing `zellij` session, switch sessions from inside `zellij`, or create a new session from project config
-- keep project startup commands and zellij layouts in a small KDL config file
-
-`zjsh` is inspired by `sesh`, but it is not a drop-in replacement for `sesh` and does not try to be config-compatible with it.
+* List configured projects from `~/.config/zjsh/config.kdl`
+* List live and resurrectable `zellij` sessions
+* Optionally list recent paths from `zoxide`
+* Always provide `.` as a current-directory target
+* Define reusable current-directory workflows with `cwd true`
+* Use `layout`, `layout_file`, or `startup` per project
+* Compose with shell scripts, selectors, and `zellij` keybindings
 
 ## Install
 
-Install the CLI with Go:
-
-```bash
+```sh
 go install github.com/saweima12/zjsh/cmd/zjsh@latest
 ```
 
 Make sure your Go binary directory is in `PATH`:
 
-```bash
+```sh
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-If you use `GOBIN`, add that directory to `PATH` instead.
-
-Verify the binary is available:
-
-```bash
-zjsh doctor
-```
+Go is only required when installing with `go install`; the built binary does not require Go at runtime.
 
 ## Requirements
 
-Install-time:
+Required at runtime:
 
-- Go 1.24 or newer, required only when installing with `go install`
-
-Runtime:
-
-- `zellij`, used to list, attach, switch, create, and delete sessions
-- `zoxide`, used as an additional project path source
+* `zellij`
 
 Optional:
 
-- `fzf`, used as a selector in terminal workflows
-- `gum`, used as a selector in terminal workflows
+* `zoxide`, used as an additional path source
+* `fzf` or `gum`, used by the examples below
 
-Install the runtime tools before using `zjsh`:
+Example install with Homebrew:
 
-```bash
+```sh
 brew install zellij zoxide fzf gum
 ```
 
-Or install them with your preferred package manager.
-
-Go is only needed to install `zjsh` from source. After installation, `zjsh` only needs `zellij` and `zoxide` at runtime. `fzf` or `gum` is only needed if you use the selector examples in this README.
-
 ## Quick Start
 
-Create the default config file:
+Create a config file:
 
-```bash
+```sh
 zjsh config init
 ```
 
-Edit the generated file:
+Check your setup:
 
-```text
-~/.config/zjsh/config.kdl
-```
-
-Validate dependencies and config:
-
-```bash
+```sh
 zjsh doctor
 ```
 
-List all available targets:
+List targets:
 
-```bash
+```sh
 zjsh list
+zjsh list -i
 ```
 
-Connect to a target:
+Connect to a project, session, path, or the current directory:
 
-```bash
+```sh
 zjsh connect api
+zjsh connect .
 ```
 
-## Example Workflow
+## Config
 
-Use `zjsh list` to print selector values:
-
-```bash
-zjsh list
-```
-
-Choose one with `fzf`:
-
-```bash
-choice=$(zjsh list -i | fzf --prompt='zjsh> ')
-```
-
-Connect to the selected target:
-
-```bash
-[ -n "$choice" ] && zjsh connect "$choice"
-```
-
-The selected value can be a raw target or a label from `zjsh list -i`:
-
-```bash
-zjsh connect api
-zjsh connect "◆ api"
-zjsh connect "● api"
-zjsh connect "→ /Users/example/work/api"
-```
-
-## Setup
-
-The default config path is:
+Default config path:
 
 ```text
 ~/.config/zjsh/config.kdl
 ```
 
-Generate it with:
-
-```bash
-zjsh config init
-```
-
-Use a custom path when needed:
-
-```bash
-zjsh config init --path ~/.config/zjsh/work.kdl
-```
-
-Example config:
+Example:
 
 ```kdl
 defaults {
@@ -162,49 +99,94 @@ defaults {
 }
 
 project "api" {
-  path "/Users/example/work/api"
+  path "~/work/api"
   session "api"
   startup "nvim ."
-  restart_on_resurrection true
 }
 
 project "infra" {
-  path "/Users/example/work/infra"
+  path "~/work/infra"
   layout "compact"
 }
 
 project "ops" {
-  path "/Users/example/work/ops"
-  layout_file "/Users/example/.config/zellij/layouts/ops.kdl"
+  path "~/work/ops"
+  layout_file "~/.config/zellij/layouts/ops.kdl"
+}
+
+project "scratch" {
+  cwd true
+  session "scratch"
+  startup "nvim ."
 }
 ```
 
-Supported fields:
+Each project must use exactly one path mode:
 
-- `defaults.shell`: shell used for generated startup layouts
-- `defaults.restart_on_resurrection`: default resurrection handling
-- `defaults.icon_project`: project icon used by `zjsh list -i`
-- `defaults.icon_session`: live session icon used by `zjsh list -i`
-- `defaults.icon_resurrectable`: resurrectable session icon used by `zjsh list -i`
-- `defaults.icon_path`: zoxide path icon used by `zjsh list -i`
-- `project.path`: project directory, required
-- `project.session`: zellij session name, defaults to the project name
-- `project.startup`: command to run in a generated one-pane layout
-- `project.layout`: named zellij layout
-- `project.layout_file`: path to a zellij layout file
-- `project.restart_on_resurrection`: project-level override
+```kdl
+project "static" {
+  path "~/work/static"
+}
 
-`project.path` and `project.layout_file` support `~` and `~/...` expansion. Other relative paths are passed through to `zellij` unchanged.
+project "dynamic" {
+  cwd true
+}
+```
 
-`defaults.shell` is only used for `project.startup`. Startup commands run as `<shell> -lc "<startup>"` inside a generated one-pane zellij layout. It is not used when `layout` or `layout_file` is configured.
+Supported project fields:
 
-Icon fields are optional. If omitted, `zjsh list -i` uses `◆`, `●`, `↺`, and `→`.
+* `path`: static project directory
+* `cwd`: use the runtime current directory when set to `true`
+* `session`: zellij session name, defaults to the project name
+* `startup`: command for a generated one-pane layout
+* `layout`: named zellij layout
+* `layout_file`: path to a zellij layout file
+* `restart_on_resurrection`: project-level resurrection behavior
 
-## Add A Zellij Command
+Supported defaults:
 
-Add a keybinding to `~/.config/zellij/config.kdl` so `zjsh` can be launched from inside `zellij`.
+* `shell`
+* `restart_on_resurrection`
+* `icon_project`
+* `icon_session`
+* `icon_resurrectable`
+* `icon_path`
+* `icon_cwd`
 
-Example using `fzf` in `tmux` mode:
+`path` and `layout_file` support `~` expansion.
+
+## Current Directory
+
+`zjsh` always includes `.` as a built-in current-directory target:
+
+```sh
+zjsh connect .
+```
+
+Use this when you are already inside a directory and want to open it in `zellij` without adding config first.
+
+Use `cwd true` when you want a reusable current-directory template:
+
+```kdl
+project "scratch" {
+  cwd true
+  session "scratch"
+  startup "nvim ."
+}
+```
+
+Difference:
+
+| Target             | Meaning                                                   |
+| ------------------ | --------------------------------------------------------- |
+| `.`                | open the current directory directly                       |
+| `cwd true` project | open the current directory using a named project template |
+
+For `cwd true` projects, the session name is `project.session`, or the project name if `session` is not set. It does not default to the current directory basename.
+
+## Zellij Keybinding
+
+Example using `fzf`:
 
 ```kdl
 keybinds {
@@ -238,9 +220,7 @@ keybinds {
 }
 ```
 
-After updating the config, reload or restart `zellij`, then press the keybinding. `zjsh connect` accepts the selected label directly, so no extra parsing is required.
-
-You can also create a shell command outside `zellij`:
+Example shell helper using `fzf`:
 
 ```sh
 zj() {
@@ -249,139 +229,125 @@ zj() {
 }
 ```
 
+Example shell helper using `gum`:
+
+```sh
+zjg() {
+  choice=$(zjsh list -i | gum filter --placeholder 'zjsh' --prompt='zjsh> ')
+  [ -n "$choice" ] && zjsh connect "$choice"
+}
+```
+
 ## Commands
 
-List selector values:
-
-```bash
-zjsh list
-```
-
-List selector labels with icons:
-
-```bash
-zjsh list -i
-```
-
-List full metadata as JSON:
-
-```bash
-zjsh list --json
-```
-
-Connect to a project, session, or path:
-
-```bash
-zjsh connect <target>
-```
-
-Validate dependencies, config parsing, project paths, and layout files:
-
-```bash
-zjsh doctor
-```
-
-Create a sample config file. Existing files are not overwritten:
-
-```bash
-zjsh config init [--path <file>]
+```sh
+zjsh list          # print selector values
+zjsh list -i       # print selector labels with icons
+zjsh list --json   # print metadata as JSON
+zjsh connect NAME  # connect to a target
+zjsh connect .     # connect to the current directory
+zjsh doctor        # check dependencies and config
+zjsh config init   # create sample config
 ```
 
 ## Entry Labels
 
-Plain `zjsh list` output is a single column designed for selectors. By default it does not include icons. Use `zjsh list -i` to include icons:
+`zjsh list -i` uses icons to show where each entry came from:
 
-- `◆ <name>`: configured project
-- `● <name>`: live `zellij` session
-- `↺ <name>`: resurrectable `zellij` session
-- `→ <path>`: `zoxide` path
+```text
+● api
+◆ infra
+↺ old-api
+→ /Users/example/work/tooling
+· .
+```
 
-`zjsh list` prints entries from these sources, in this order:
+Default labels:
 
-- configured projects from `config.kdl`
-- live `zellij` sessions
-- resurrectable `zellij` sessions
-- `zoxide` paths
+* `●`: live `zellij` session
+* `◆`: configured project
+* `↺`: resurrectable session
+* `→`: zoxide path
+* `·`: current directory
 
-Display rules:
+Display order:
 
-- if a configured project and a `zellij` session use the same session name, they are shown as one project entry
-- `zoxide` paths are shown by full path, even when the basename matches a project or session
-- duplicate `zoxide` paths are removed by full path; paths with the same basename stay separate
+1. live sessions
+2. configured projects
+3. resurrectable sessions
+4. zoxide paths
+5. current directory `.`
+
+When a configured project and a session use the same session name, they are shown as one entry. Project config remains authoritative.
 
 ## Connect Behavior
 
-`zjsh connect <target>` strips known selector symbols first, so both `api` and `◆ api` resolve to the same target.
+`zjsh connect` accepts both raw values and icon labels:
 
-Resolution order is:
+```sh
+zjsh connect api
+zjsh connect "◆ api"
+zjsh connect "● api"
+zjsh connect "→ /Users/example/work/api"
+zjsh connect "· ."
+```
+
+Resolution order:
 
 1. project name
 2. session name
-3. full path; if a `zoxide` path and a project use the same path, the `zoxide` entry is used
+3. full path
+4. `.` current-directory target
 
-When the target is a live session, `zjsh` attaches to it outside `zellij` or switches to it from inside `zellij`.
-
-When the target is not a live session, `zjsh` creates or switches to a session using the resolved entry:
-
-- `layout_file` uses the configured zellij layout file
-- `layout` uses a named zellij layout
-- `startup` creates a generated one-pane layout that runs the command through the configured shell
-- `zoxide` path entries create a session in that directory. The session name is the path basename; if that name is already reserved by a project or existing session, `zjsh` uses `basename-<hash(path)>` instead.
-
-Layout and startup precedence:
+Layout precedence:
 
 1. `layout_file`
 2. `layout`
 3. `startup`
 4. project path only
 
-If you want startup commands inside a custom zellij layout, define them in the zellij layout itself.
+For path-based entries such as zoxide paths and `.`, the session name is based on the path basename. If that name is already reserved, `zjsh` appends a short path hash.
 
-## Resurrection Behavior
+## Resurrection
 
-If the target session is in `resurrection` state, `zjsh` checks `restart_on_resurrection`.
+If a target session is resurrectable, `zjsh` checks `restart_on_resurrection`.
 
-- when `restart_on_resurrection` is `true`, `zjsh connect` clears the resurrected session and recreates it from the project definition
-- otherwise, `zjsh connect` attaches directly to the resurrected session
+* `true`: delete the resurrected session and recreate it from project config
+* `false`: attach to the resurrected session directly
 
-Project-level `restart_on_resurrection` overrides the default value.
-
-This is useful for tools like Neovim that rely on swap files or other runtime state. Recreating the session can avoid errors from attaching to resurrected panes whose swap files or related state have already been cleaned up.
+Project-level settings override `defaults.restart_on_resurrection`.
 
 ## Troubleshooting
 
-- `zjsh: command not found`: make sure your Go binary directory is in `PATH`, usually `$(go env GOPATH)/bin` or your custom `GOBIN`.
-- `zjsh doctor` reports missing `zellij`: install `zellij` and make sure it is available in `PATH`.
-- `zjsh doctor` reports missing `zoxide`: install `zoxide` and make sure it is available in `PATH`.
-- `zjsh list` does not show a configured project: check `~/.config/zjsh/config.kdl`, confirm `project.path` exists, then run `zjsh doctor`.
-- The zellij keybinding does not work: `Run "sh" "-lc"` may use a different `PATH` than your interactive shell, so use an absolute path to `zjsh` or ensure the binary directory is available to non-interactive shells.
-- `startup` is ignored when a layout is configured: `layout_file` and `layout` take precedence over `startup`.
-
-## Release
-
-For maintainers, publish a new version by tagging a commit:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Users can install a specific version with:
-
-```bash
-go install github.com/saweima12/zjsh/cmd/zjsh@v0.1.0
-```
-
-Users can install the latest tagged version with:
-
-```bash
-go install github.com/saweima12/zjsh/cmd/zjsh@latest
-```
+* `zjsh: command not found`: make sure `$(go env GOPATH)/bin` or `GOBIN` is in `PATH`.
+* Missing `zellij`: install `zellij`; this is required.
+* Missing `zoxide`: this is only a warning; zoxide paths will be unavailable.
+* `zjsh list` only shows `.`: no config, no sessions, and no zoxide paths were found.
+* `startup` is ignored: `layout_file` and `layout` take precedence.
+* `cwd true` uses the wrong session name: it uses `session`, then project name, not the current directory basename.
 
 ## Development
 
-```bash
+```sh
 make fmt
 make test
 make build
 ```
+
+## Release
+
+For maintainers:
+
+```sh
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+Pushing a version tag creates a GitHub Release with prebuilt binaries.
+
+Install a specific version with Go:
+
+```sh
+go install github.com/saweima12/zjsh/cmd/zjsh@v0.3.0
+```
+
