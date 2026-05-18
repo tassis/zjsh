@@ -13,6 +13,9 @@ import (
 var ErrTargetNotFound = errors.New("target not found")
 
 func ResolveExact(entries []domain.Entry, target string) (domain.Entry, error) {
+	if entry, ok := findCurrentDir(entries, target); ok {
+		return entry, nil
+	}
 	if entry, ok := findProjectName(entries, target); ok {
 		return entry, nil
 	}
@@ -23,6 +26,18 @@ func ResolveExact(entries []domain.Entry, target string) (domain.Entry, error) {
 		return entry, nil
 	}
 	return domain.Entry{}, fmt.Errorf("%w: %s", ErrTargetNotFound, target)
+}
+
+func findCurrentDir(entries []domain.Entry, target string) (domain.Entry, bool) {
+	if target != "." {
+		return domain.Entry{}, false
+	}
+	for _, entry := range entries {
+		if entry.CurrentDir {
+			return entry, true
+		}
+	}
+	return domain.Entry{}, false
 }
 
 func findProjectName(entries []domain.Entry, target string) (domain.Entry, bool) {

@@ -30,6 +30,7 @@ func DefaultIcons() Icons {
 type Project struct {
 	Name                  string
 	Path                  string
+	CWD                   bool
 	Session               string
 	Startup               string
 	Layout                string

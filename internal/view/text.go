@@ -29,6 +29,9 @@ func selectorLabel(entry domain.Entry, icons domain.Icons) string {
 }
 
 func selectorValue(entry domain.Entry) string {
+	if entry.CurrentDir {
+		return "."
+	}
 	if entry.Type == domain.EntryPath && entry.Path != "" {
 		return entry.Path
 	}

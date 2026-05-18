@@ -24,7 +24,7 @@ var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 func (p Provider) ListSessions(ctx context.Context) ([]Session, error) {
 	if _, err := p.Runner.LookPath("zellij"); err != nil {
 		if errors.Is(err, platform.ErrCommandNotFound) {
-			return nil, nil
+			return nil, err
 		}
 		return nil, err
 	}
