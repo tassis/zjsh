@@ -5,7 +5,11 @@ INSTALL_DIR ?= $(if $(GOBIN),$(GOBIN),$(HOME)/.local/bin)
 .PHONY: build
 build:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/$(APP) ./cmd/zjsh
+	CGO_ENABLED=0 go build -o $(BIN_DIR)/$(APP) ./cmd/zjsh
+
+.PHONY: release-build
+release-build:
+	./scripts/build.sh
 
 .PHONY: run
 run:
