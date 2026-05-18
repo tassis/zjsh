@@ -68,12 +68,133 @@ project "inherits" {
 	}
 }
 
-func TestParseConfigRejectsRemovedDefaultsFields(t *testing.T) {
+func TestParseConfigIgnoresUnknownFields(t *testing.T) {
 	for _, field := range []string{"attach", "session_name"} {
 		_, err := parseConfig("defaults {\n  " + field + " true\n}\n")
-		if err == nil {
-			t.Fatalf("expected unsupported key error for %q", field)
+		if err != nil {
+			t.Fatalf("expected unknown key %q to be ignored, got %v", field, err)
 		}
+	}
+}
+
+func TestParseConfigSupportsCWDProject(t *testing.T) {
+	config, err := parseConfig(`project "here" {
+  cwd true
+  session "work"
+  layout "compact"
+}
+`)
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	project := config.Projects[0]
+	if !project.CWD || project.Path != "" || project.Session != "work" || project.Layout != "compact" {
+		t.Fatalf("unexpected cwd project: %+v", project)
+	}
+}
+
+func TestParseConfigRejectsInvalidProjectPathModes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name: "missing path and cwd",
+			input: `project "here" {
+}
+`,
+		},
+		{
+			name: "path and cwd",
+			input: `project "here" {
+  path "/tmp/here"
+  cwd true
+}
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseConfig(tt.input)
+			if err == nil {
+				t.Fatalf("expected parse error")
+			}
+		})
+	}
+}
+
+func TestParseConfigIgnoresUnknownTopLevelNodes(t *testing.T) {
+	_, err := parseConfig(`plugin "unused" {
+  enabled true
+}
+
+project "api" {
+  path "/tmp/api"
+}
+`)
+	if err != nil {
+		t.Fatalf("expected unknown top-level node to be ignored, got %v", err)
+	}
+}
+
+func TestParseConfigIgnoresUnknownProjectFields(t *testing.T) {
+	config, err := parseConfig(`project "api" {
+  path "/tmp/api"
+  removed_field "ignored"
+}
+`)
+	if err != nil {
+		t.Fatalf("expected unknown project field to be ignored, got %v", err)
+	}
+	if len(config.Projects) != 1 || config.Projects[0].Name != "api" {
+		t.Fatalf("unexpected config: %+v", config)
+	}
+}
+
+func TestParseConfigRejectsInvalidKDL(t *testing.T) {
+	_, err := parseConfig(`project "api" {
+  path "/tmp/api"
+`)
+	if err == nil {
+		t.Fatalf("expected invalid KDL syntax error")
+	}
+}
+
+func TestParseConfigRejectsInvalidBooleanValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name: "invalid cwd",
+			input: `project "here" {
+  cwd "yes"
+}
+`,
+		},
+		{
+			name: "invalid project restart_on_resurrection",
+			input: `project "api" {
+  path "/tmp/api"
+  restart_on_resurrection "yes"
+}
+`,
+		},
+		{
+			name: "invalid defaults restart_on_resurrection",
+			input: `defaults {
+  restart_on_resurrection "yes"
+}
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseConfig(tt.input)
+			if err == nil {
+				t.Fatalf("expected invalid boolean error")
+			}
+		})
 	}
 }
 
