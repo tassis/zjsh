@@ -6,7 +6,7 @@ A sesh-like session launcher for `zellij`.
 
 `zjsh` collects configured projects, live `zellij` sessions, resurrectable sessions, optional `zoxide` paths, and the current directory into one selector-friendly list.
 
-It does not provide its own TUI. Pipe the list into `fzf`, `gum`, or any selector, then pass the selected value back to `zjsh connect`.
+`zjsh` does not provide its own TUI. It is meant to compose with `fzf`, `gum`, shell scripts, and `zellij` keybindings.
 
 ```sh
 choice=$(zjsh list -i | fzf --prompt='zjsh> ')
@@ -34,6 +34,8 @@ Make sure your Go binary directory is in `PATH`:
 ```sh
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
+
+Go is only required when installing with `go install`; the built binary does not require Go at runtime.
 
 ## Requirements
 
@@ -201,11 +203,37 @@ keybinds {
 }
 ```
 
-Example shell helper:
+Example using `gum`:
+
+```kdl
+keybinds {
+  tmux {
+    bind "K" {
+      Run "sh" "-lc" "choice=$(zjsh list -i | gum filter --placeholder 'zjsh' --prompt='zjsh> '); [ -n \"$choice\" ] && exec zjsh connect \"$choice\"" {
+        name "zjsh"
+        floating true
+        close_on_exit true
+      }
+      SwitchToMode "Locked"
+    }
+  }
+}
+```
+
+Example shell helper using `fzf`:
 
 ```sh
 zj() {
   choice=$(zjsh list -i | fzf --prompt='zjsh> ')
+  [ -n "$choice" ] && zjsh connect "$choice"
+}
+```
+
+Example shell helper using `gum`:
+
+```sh
+zjg() {
+  choice=$(zjsh list -i | gum filter --placeholder 'zjsh' --prompt='zjsh> ')
   [ -n "$choice" ] && zjsh connect "$choice"
 }
 ```
@@ -308,13 +336,18 @@ make build
 
 ## Release
 
+For maintainers:
+
 ```sh
 git tag v0.3.0
 git push origin v0.3.0
 ```
 
-Install a specific version:
+Pushing a version tag creates a GitHub Release with prebuilt binaries.
+
+Install a specific version with Go:
 
 ```sh
 go install github.com/saweima12/zjsh/cmd/zjsh@v0.3.0
 ```
+
