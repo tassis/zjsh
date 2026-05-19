@@ -52,7 +52,10 @@ jobs:
             EXT=".exe"
           fi
 
-          OUTPUT="dist/zjsh-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}"
+          # Important:
+          # The binary name inside the archive should stay stable.
+          # This allows tools like mise/github backend to expose `zjsh`.
+          OUTPUT="dist/zjsh${EXT}"
 
           VERSION="${{ github.ref_name }}" \
           GOOS="${{ matrix.goos }}" \
@@ -67,15 +70,19 @@ jobs:
 
           cd dist
 
-          for file in zjsh-*; do
-            if [[ "$file" == *.exe ]]; then
-              zip "${file%.exe}.zip" "$file"
-              rm "$file"
-            else
-              tar -czf "${file}.tar.gz" "$file"
-              rm "$file"
-            fi
-          done
+          VERSION="${{ github.ref_name }}"
+          GOOS="${{ matrix.goos }}"
+          GOARCH="${{ matrix.goarch }}"
+
+          ARCHIVE_NAME="zjsh-${VERSION}-${GOOS}-${GOARCH}"
+
+          if [ "${GOOS}" = "windows" ]; then
+            zip "${ARCHIVE_NAME}.zip" "zjsh.exe"
+            rm "zjsh.exe"
+          else
+            tar -czf "${ARCHIVE_NAME}.tar.gz" "zjsh"
+            rm "zjsh"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
