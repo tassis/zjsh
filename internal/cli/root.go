@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/saweima12/zjsh/internal/domain"
@@ -291,7 +292,7 @@ func (a App) runConfigInit(args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(sampleConfig()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(sampleConfigForGOOS(runtime.GOOS)), 0o644); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(a.Stdout, "wrote %s\n", path)
@@ -336,7 +337,33 @@ func writeDoctorReport(w io.Writer, checks []doctorCheck) error {
 	return nil
 }
 
-func sampleConfig() string {
+func sampleConfigForGOOS(goos string) string {
+	if goos == "windows" {
+		return strings.TrimSpace(`defaults {
+  shell "sh"
+  restart_on_resurrection false
+  icon_project "◆"
+  icon_session "●"
+  icon_resurrectable "↺"
+  icon_path "→"
+}
+
+project "api" {
+  path "C:\\Users\\example\\work\\api"
+  session "api"
+}
+
+project "infra" {
+  path "C:\\Users\\example\\work\\infra"
+  layout "compact"
+}
+
+project "ops" {
+  path "C:\\Users\\example\\work\\ops"
+  layout_file "C:\\Users\\example\\AppData\\Roaming\\zellij\\layouts\\ops.kdl"
+}
+`) + "\n"
+	}
 	return strings.TrimSpace(`defaults {
   shell "sh"
   restart_on_resurrection false
@@ -349,7 +376,6 @@ func sampleConfig() string {
 project "api" {
   path "/Users/example/work/api"
   session "api"
-  startup "nvim ."
   restart_on_resurrection true
 }
 
