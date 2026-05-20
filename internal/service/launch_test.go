@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/saweima12/zjsh/internal/domain"
@@ -63,7 +62,7 @@ func TestLauncherConnectLiveSessionInsideZellij(t *testing.T) {
 	}
 }
 
-func TestLauncherCreateSessionWithStartup(t *testing.T) {
+func TestLauncherCreateSessionWithStartupFallsBackToPlainCwd(t *testing.T) {
 	runner := &recordingRunner{}
 	launcher := Launcher{Runner: runner, Env: staticEnv{}}
 	err := launcher.Connect(context.Background(), domain.Entry{Type: domain.EntryProject, Name: "api", SessionName: "api", Path: "/tmp/api", Shell: "bash", Startup: "nvim ."})
@@ -73,11 +72,8 @@ func TestLauncherCreateSessionWithStartup(t *testing.T) {
 	if len(runner.calls) != 1 || runner.calls[0] == "" {
 		t.Fatalf("expected one command, got %#v", runner.calls)
 	}
-	if !strings.HasPrefix(runner.calls[0], "zellij -s api --layout-string ") {
-		t.Fatalf("unexpected startup command: %q", runner.calls[0])
-	}
-	if !strings.Contains(runner.calls[0], `nvim .`) {
-		t.Fatalf("expected startup command in layout string: %q", runner.calls[0])
+	if runner.calls[0] != "zellij attach -c api options --default-cwd /tmp/api" {
+		t.Fatalf("expected plain cwd create, got %#v", runner.calls)
 	}
 }
 

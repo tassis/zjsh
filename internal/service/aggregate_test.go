@@ -54,11 +54,11 @@ func TestListEntriesCanExcludeResurrectable(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("expected project and zoxide action entries, got %d", len(entries))
 	}
-	if entries[0].Name != "api" || len(entries[0].Sources) != 2 {
-		t.Fatalf("unexpected merged project entry: %+v", entries[0])
+	if entries[0].Type != domain.EntrySession || entries[0].Name != "api" || len(entries[0].Sources) != 2 {
+		t.Fatalf("unexpected merged live session entry: %+v", entries[0])
 	}
 	if !entries[0].RestartOnResurrection {
-		t.Fatalf("expected merged project restart policy, got %+v", entries[0])
+		t.Fatalf("expected merged restart policy, got %+v", entries[0])
 	}
 }
 
@@ -125,8 +125,8 @@ func TestListEntriesDefaultsProjectSessionNameToProjectName(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected project and session to merge, got %#v", entries)
 	}
-	if entries[0].SessionName != "project-zjsh" || entries[0].SessionState != domain.SessionStateLive {
-		t.Fatalf("expected project name as default session name, got %+v", entries[0])
+	if entries[0].Type != domain.EntrySession || entries[0].SessionName != "project-zjsh" || entries[0].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected live session to be primary, got %+v", entries[0])
 	}
 }
 
@@ -156,8 +156,8 @@ func TestListEntriesUsesExplicitProjectSessionName(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected project and explicit session to merge, got %#v", entries)
 	}
-	if entries[0].SessionName != "zjsh" || entries[0].SessionState != domain.SessionStateLive {
-		t.Fatalf("expected explicit session name, got %+v", entries[0])
+	if entries[0].Type != domain.EntrySession || entries[0].Name != "zjsh" || entries[0].SessionName != "zjsh" || entries[0].SessionState != domain.SessionStateLive {
+		t.Fatalf("expected explicit live session to be primary, got %+v", entries[0])
 	}
 }
 
@@ -212,7 +212,7 @@ func TestListEntriesPreservesZoxideOrderWithinPathEntries(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("expected 3 path entries, got %d", len(entries))
 	}
-	if entries[0].Path != "/tmp/third" || entries[1].Path != "/tmp/first" || entries[2].Path != "/tmp/second" {
+	if !entries[0].CurrentDir || entries[1].Path != "/tmp/third" || entries[2].Path != "/tmp/first" || entries[3].Path != "/tmp/second" {
 		t.Fatalf("expected zoxide order to be preserved, got %#v", entries)
 	}
 }
@@ -272,8 +272,8 @@ func TestListEntriesShowsSessionAndSameBasenameZoxidePath(t *testing.T) {
 	if entries[0].Type != domain.EntrySession || entries[0].SessionState != domain.SessionStateLive {
 		t.Fatalf("expected live session first, got %+v", entries[0])
 	}
-	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/foo" || entries[1].SessionName != "" {
-		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
+	if !entries[1].CurrentDir || entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/foo" || entries[2].SessionName != "" {
+		t.Fatalf("expected current dir then separate zoxide path action, got %+v / %+v", entries[1], entries[2])
 	}
 }
 
@@ -305,8 +305,8 @@ func TestListEntriesShowsProjectSessionAndSameBasenameZoxidePath(t *testing.T) {
 		t.Fatalf("expected project and zoxide path action entries, got %#v", entries)
 	}
 	entry := entries[0]
-	if entry.Type != domain.EntryProject || entry.Name != "project-foo" || entry.Path != "/tmp/project/foo" {
-		t.Fatalf("expected project fields to win, got %+v", entry)
+	if entry.Type != domain.EntrySession || entry.Name != "foo" || entry.Path != "/tmp/project/foo" {
+		t.Fatalf("expected live session to win merged identity, got %+v", entry)
 	}
 	if entry.SessionState != domain.SessionStateLive || entry.SessionName != "foo" {
 		t.Fatalf("expected live session state to be preserved, got %+v", entry)
@@ -314,8 +314,8 @@ func TestListEntriesShowsProjectSessionAndSameBasenameZoxidePath(t *testing.T) {
 	if len(entry.Sources) != 2 {
 		t.Fatalf("expected merged sources, got %+v", entry)
 	}
-	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/other/foo" || entries[1].SessionName != "" {
-		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
+	if !entries[1].CurrentDir || entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/other/foo" || entries[2].SessionName != "" {
+		t.Fatalf("expected current dir then separate zoxide path action, got %+v / %+v", entries[1], entries[2])
 	}
 }
 
@@ -354,8 +354,8 @@ project "project-zjsh" {
 	if entries[1].Name != "project-zjsh" || entries[1].Path != "/tmp/repos/zjsh" {
 		t.Fatalf("unexpected second project: %+v", entries[1])
 	}
-	if entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/repos/zjsh" {
-		t.Fatalf("expected separate zoxide path action, got %+v", entries[2])
+	if !entries[2].CurrentDir || entries[3].Type != domain.EntryPath || entries[3].Path != "/tmp/repos/zjsh" {
+		t.Fatalf("expected current dir then separate zoxide path action, got %+v / %+v", entries[2], entries[3])
 	}
 }
 
@@ -390,8 +390,8 @@ func TestListEntriesShowsProjectSessionAndSamePathZoxideAction(t *testing.T) {
 	if entries[1].Type != domain.EntryProject || entries[1].Name != "project-zjsh" || entries[1].SessionName != "project-zjsh" {
 		t.Fatalf("expected project to win path identity, got %+v", entries[0])
 	}
-	if entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/repos/zjsh" {
-		t.Fatalf("expected separate zoxide path action, got %+v", entries[2])
+	if !entries[2].CurrentDir || entries[3].Type != domain.EntryPath || entries[3].Path != "/tmp/repos/zjsh" {
+		t.Fatalf("expected current dir then separate zoxide path action, got %+v / %+v", entries[2], entries[3])
 	}
 }
 
@@ -423,8 +423,8 @@ func TestListEntriesPrefersProjectWhenSessionMerges(t *testing.T) {
 		t.Fatalf("expected project plus zoxide path action, got %#v", entries)
 	}
 	entry := entries[0]
-	if entry.Type != domain.EntryProject || entry.Name != "api" || entry.Startup != "nvim ." {
-		t.Fatalf("expected project fields to win, got %+v", entry)
+	if entry.Type != domain.EntrySession || entry.Name != "api-session" || entry.Startup != "nvim ." {
+		t.Fatalf("expected live session to win merged identity while preserving project config, got %+v", entry)
 	}
 	if entry.SessionState != domain.SessionStateLive {
 		t.Fatalf("expected zellij session state to be preserved, got %+v", entry)
@@ -432,12 +432,12 @@ func TestListEntriesPrefersProjectWhenSessionMerges(t *testing.T) {
 	if len(entry.Sources) != 2 {
 		t.Fatalf("expected merged sources, got %+v", entry)
 	}
-	if entries[1].Type != domain.EntryPath || entries[1].Path != "/tmp/api" {
-		t.Fatalf("expected separate zoxide path action, got %+v", entries[1])
+	if !entries[1].CurrentDir || entries[2].Type != domain.EntryPath || entries[2].Path != "/tmp/api" {
+		t.Fatalf("expected current dir then separate zoxide path action, got %+v / %+v", entries[1], entries[2])
 	}
 }
 
-func TestListEntriesMergesCurrentDirectoryWithZoxidePath(t *testing.T) {
+func TestListEntriesKeepsCurrentDirectorySeparateFromZoxidePath(t *testing.T) {
 	agg := Aggregator{
 		CWD:    "/tmp/here",
 		Config: config.Loader{Path: filepath.Join(t.TempDir(), "missing.kdl")},
@@ -452,17 +452,20 @@ func TestListEntriesMergesCurrentDirectoryWithZoxidePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() error = %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("expected zoxide path and current dir, got %#v", entries)
+	if len(entries) != 3 {
+		t.Fatalf("expected current dir plus two path entries, got %#v", entries)
 	}
-	if entries[0].Path != "/tmp/other" || entries[0].CurrentDir {
-		t.Fatalf("expected ordinary zoxide path first, got %+v", entries[0])
+	if !entries[0].CurrentDir || entries[0].Path != "/tmp/here" {
+		t.Fatalf("expected current dir before zoxide paths, got %+v", entries[0])
 	}
-	if !entries[1].CurrentDir || entries[1].Path != "/tmp/here" {
-		t.Fatalf("expected current dir entry, got %+v", entries[1])
+	if entries[1].CurrentDir || entries[1].Path != "/tmp/here" {
+		t.Fatalf("expected separate matching zoxide path, got %+v", entries[1])
 	}
-	if len(entries[1].Sources) != 2 || entries[1].Sources[0] != "cwd" || entries[1].Sources[1] != "zoxide" {
-		t.Fatalf("expected current dir to include cwd and zoxide sources, got %+v", entries[1].Sources)
+	if entries[2].CurrentDir || entries[2].Path != "/tmp/other" {
+		t.Fatalf("expected ordinary zoxide path last, got %+v", entries[2])
+	}
+	if len(entries[0].Sources) != 1 || entries[0].Sources[0] != "cwd" {
+		t.Fatalf("expected current dir to only include cwd source, got %+v", entries[0].Sources)
 	}
 }
 
@@ -495,7 +498,7 @@ func TestListEntriesSupportsCWDProjectTemplate(t *testing.T) {
 		t.Fatalf("expected cwd project and current dir, got %#v", entries)
 	}
 	entry := entries[0]
-	if entry.Type != domain.EntryProject || entry.Name != "here" || entry.Path != "/tmp/runtime" || entry.SessionName != "work" {
+	if entry.Type != domain.EntrySession || entry.Name != "work" || entry.Path != "/tmp/runtime" || entry.SessionName != "work" {
 		t.Fatalf("unexpected cwd project entry: %+v", entry)
 	}
 	if entry.Layout != "compact" || entry.SessionState != domain.SessionStateLive || entry.SortRank != liveSessionSortRank {

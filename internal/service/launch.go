@@ -87,10 +87,6 @@ func createSessionArgsInsideZellij(entry domain.Entry) (string, []string) {
 		}
 		return "zellij", args
 	}
-	if entry.Startup != "" {
-		args = append(args, "--layout-string", BuildStartupLayout(entry.Shell, path, entry.Startup))
-		return "zellij", args
-	}
 	if path != "" {
 		args = append(args, "--cwd", path)
 	}
@@ -114,9 +110,6 @@ func createSessionArgsOutsideZellij(entry domain.Entry) (string, []string) {
 			options = append(options, "--default-cwd", path)
 		}
 		return "zellij", options
-	}
-	if entry.Startup != "" {
-		return "zellij", []string{"-s", sessionName, "--layout-string", BuildStartupLayout(entry.Shell, path, entry.Startup)}
 	}
 	if path != "" {
 		options = append(options, "--default-cwd", path)

@@ -193,8 +193,8 @@ func TestListTextUsesSinglePlainColumnByDefault(t *testing.T) {
 	if lines[0] != "api" {
 		t.Fatalf("expected first selector to be project/session name, got %q", lines[0])
 	}
-	if lines[1] != "/tmp/api" || lines[2] != "/tmp/notes" || lines[3] != "." {
-		t.Fatalf("expected zoxide path action selectors, got %q", lines[1:])
+	if lines[1] != "." || lines[2] != "/tmp/api" || lines[3] != "/tmp/notes" {
+		t.Fatalf("expected current dir before zoxide path selectors, got %q", lines[1:])
 	}
 }
 
@@ -219,7 +219,7 @@ func TestListTextShowsIconsWithFlag(t *testing.T) {
 	}
 	got := strings.TrimSpace(stdout.String())
 	lines := strings.Split(got, "\n")
-	if lines[0] != "◆ api" || lines[1] != "→ /tmp/api" || lines[2] != "→ /tmp/notes" || lines[3] != "→ ." {
+	if lines[0] != "● api" || lines[1] != "→ ." || lines[2] != "→ /tmp/api" || lines[3] != "→ /tmp/notes" {
 		t.Fatalf("expected icon labels, got %q", got)
 	}
 }
@@ -260,7 +260,7 @@ project "api" {
 		t.Fatalf("Run() code = %d stderr=%s", code, stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "P api\nR old\nZ /tmp/notes\nZ ." {
+	if got != "P api\nR old\nZ .\nZ /tmp/notes" {
 		t.Fatalf("expected configured icon labels, got %q", got)
 	}
 }
@@ -487,7 +487,7 @@ func TestListTextShowsZoxidePathWhenExistingSessionHasSameBasename(t *testing.T)
 		t.Fatalf("expected list success, stderr=%q", stderr.String())
 	}
 	got := strings.TrimSpace(stdout.String())
-	if got != "foo\n/tmp/foo\n." {
+	if got != "foo\n.\n/tmp/foo" {
 		t.Fatalf("expected session and zoxide path action selectors, got %q", got)
 	}
 }
@@ -622,8 +622,34 @@ func TestConfigInitWritesSampleConfig(t *testing.T) {
 	if !strings.Contains(string(data), `project "api"`) {
 		t.Fatalf("expected sample config content, got %q", string(data))
 	}
+	if strings.Contains(string(data), `startup "`) {
+		t.Fatalf("expected startup to be absent from sample config, got %q", string(data))
+	}
 	if !strings.Contains(stdout.String(), configPath) {
 		t.Fatalf("expected written path in stdout, got %q", stdout.String())
+	}
+}
+
+func TestSampleConfigForGOOSUnixHasNoStartup(t *testing.T) {
+	data := sampleConfigForGOOS("linux")
+	if strings.Contains(data, `startup "`) {
+		t.Fatalf("expected startup to be absent, got %q", data)
+	}
+	if !strings.Contains(data, `path "/Users/example/work/api"`) {
+		t.Fatalf("expected unix sample paths, got %q", data)
+	}
+}
+
+func TestSampleConfigForGOOSWindowsUsesWindowsPaths(t *testing.T) {
+	data := sampleConfigForGOOS("windows")
+	if strings.Contains(data, `startup "`) {
+		t.Fatalf("expected startup to be absent, got %q", data)
+	}
+	if !strings.Contains(data, `C:\\Users\\example\\work\\api`) {
+		t.Fatalf("expected windows sample paths, got %q", data)
+	}
+	if !strings.Contains(data, `AppData\\Roaming\\zellij\\layouts\\ops.kdl`) {
+		t.Fatalf("expected windows layout file path, got %q", data)
 	}
 }
 

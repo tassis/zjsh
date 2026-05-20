@@ -21,8 +21,8 @@ const (
 	liveSessionSortRank   = 500
 	projectSortRank       = 400
 	resurrectableSortRank = 300
+	currentDirSortRank    = 250
 	pathSortRank          = 200
-	currentDirSortRank    = 100
 )
 
 type Aggregator struct {
@@ -119,12 +119,7 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 		})
 		order++
 	}
-	currentDirSources := []string{"cwd"}
 	for _, path := range paths {
-		if samePath(path, cwd) {
-			currentDirSources = append(currentDirSources, "zoxide")
-			continue
-		}
 		entries = append(entries, domain.Entry{
 			Name:     filepath.Base(path),
 			Type:     domain.EntryPath,
@@ -139,7 +134,7 @@ func (a Aggregator) List(ctx context.Context, includeResurrectable bool) (ListRe
 	entries = append(entries, domain.Entry{
 		Name:       ".",
 		Type:       domain.EntryPath,
-		Sources:    currentDirSources,
+		Sources:    []string{"cwd"},
 		Path:       cwd,
 		CurrentDir: true,
 		Score:      pathScore,
@@ -292,7 +287,7 @@ func normalizeEntry(entry domain.Entry) domain.Entry {
 func mergeEntries(existing, incoming domain.Entry) domain.Entry {
 	primary := existing
 	secondary := incoming
-	if incoming.Score > existing.Score {
+	if prefersIncomingAsPrimary(existing, incoming) {
 		primary, secondary = incoming, existing
 	}
 	merged := primary
@@ -333,6 +328,18 @@ func mergeEntries(existing, incoming domain.Entry) domain.Entry {
 		merged.Order = secondary.Order
 	}
 	return merged
+}
+
+func prefersIncomingAsPrimary(existing, incoming domain.Entry) bool {
+	if isLiveSessionProjectMerge(existing, incoming) {
+		return incoming.Type == domain.EntrySession && incoming.SessionState == domain.SessionStateLive
+	}
+	return incoming.Score > existing.Score
+}
+
+func isLiveSessionProjectMerge(a, b domain.Entry) bool {
+	return (a.Type == domain.EntryProject && b.Type == domain.EntrySession && b.SessionState == domain.SessionStateLive) ||
+		(a.Type == domain.EntrySession && a.SessionState == domain.SessionStateLive && b.Type == domain.EntryProject)
 }
 
 func effectiveSortRank(entry domain.Entry) int {
