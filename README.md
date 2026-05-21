@@ -329,3 +329,17 @@ make fmt
 make test
 make build
 ```
+
+## Project status
+
+`zjsh` is currently feature-complete for my intended workflow.
+
+The project is expected to stay small and focused. Future changes will mainly be limited to:
+
+- compatibility updates for new Zellij releases
+- bug fixes
+- documentation improvements
+- small UX improvements that fit the current design
+- new features only when Zellij exposes capabilities that make them practical
+
+`zjsh` is not intended to become a full TUI session manager or a replacement for Zellij's built-in session manager.
