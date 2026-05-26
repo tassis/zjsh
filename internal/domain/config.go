@@ -3,6 +3,7 @@ package domain
 type Config struct {
 	Defaults Defaults
 	Projects []Project
+	Macros   []Macro
 }
 
 type Defaults struct {
@@ -16,6 +17,7 @@ type Icons struct {
 	Session       string
 	Resurrectable string
 	Path          string
+	Macro         string
 }
 
 func DefaultIcons() Icons {
@@ -24,6 +26,7 @@ func DefaultIcons() Icons {
 		Session:       "●",
 		Resurrectable: "↺",
 		Path:          "→",
+		Macro:         "▶",
 	}
 }
 
@@ -36,4 +39,10 @@ type Project struct {
 	Layout                string
 	LayoutFile            string
 	RestartOnResurrection *bool
+}
+
+type Macro struct {
+	Name string   `json:"name"`
+	CWD  string   `json:"cwd,omitempty"`
+	Exec []string `json:"exec"`
 }

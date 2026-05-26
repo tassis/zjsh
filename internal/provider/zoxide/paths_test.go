@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/saweima12/zjsh/internal/platform"
+	"github.com/tassis/zjsh/internal/platform"
 )
 
 type fakeRunner struct {

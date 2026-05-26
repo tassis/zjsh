@@ -6,6 +6,8 @@ A sesh-like session launcher for `zellij`.
 
 `zjsh` collects configured projects, live `zellij` sessions, resurrectable sessions, optional `zoxide` paths, and the current directory into one selector-friendly list.
 
+It can also list configured macros and execute them in a new pane inside the current `zellij` session.
+
 It does not provide its own TUI. Instead, it is designed to compose with `fzf`, `gum`, shell scripts, and `zellij` keybindings.
 
 ```sh
@@ -21,12 +23,13 @@ choice=$(zjsh list -i | fzf --prompt='zjsh> ')
 * Always provide `.` as a current-directory target
 * Define reusable current-directory workflows with `cwd true`
 * Use `layout` or `layout_file` per project
+* Define reusable macros with `cwd` and `exec`
 * Compose with shell scripts, selectors, and `zellij` keybindings
 
 ## Install
 
 ```sh
-go install github.com/saweima12/zjsh/cmd/zjsh@latest
+go install github.com/tassis/zjsh/cmd/zjsh@latest
 ```
 
 Make sure your Go binary directory is in `PATH`:
@@ -84,6 +87,14 @@ zjsh connect api
 zjsh connect .
 ```
 
+List and execute macros from inside `zellij`:
+
+```sh
+zjsh macros
+choice=$(zjsh macros -i | fzf --prompt='macro> ')
+[ -n "$choice" ] && zjsh exec "$choice"
+```
+
 ## Config
 
 `zjsh config init` writes an OS-appropriate sample config.
@@ -123,6 +134,15 @@ project "scratch" {
   session "scratch"
   layout "compact"
 }
+
+macro "prod" {
+  exec "ssh" "prod"
+}
+
+macro "api-shell" {
+  cwd "~/work/api"
+  exec "docker" "compose" "exec" "api" "sh"
+}
 ```
 
 Each project must use exactly one path mode:
@@ -154,8 +174,32 @@ Supported defaults:
 * `icon_session`
 * `icon_resurrectable`
 * `icon_path`
+* `icon_macro`
 
-`path` and `layout_file` support `~` expansion.
+Supported macro fields:
+
+* `cwd`: run the macro in this directory; defaults to the runtime current directory
+* `exec`: command argv to execute in a new pane
+
+`path`, `layout_file`, and macro `cwd` support `~` expansion.
+
+For `exec`, the recommended form is explicit argv:
+
+```kdl
+macro "prod" {
+  exec "ssh" "prod"
+}
+```
+
+Simple single-string commands are also supported:
+
+```kdl
+macro "prod" {
+  exec "ssh prod"
+}
+```
+
+Single-string `exec` is intentionally strict. It only supports simple whitespace splitting. If you need quotes or exact argv control, use the multi-argument form.
 
 ## Current Directory
 
@@ -230,14 +274,27 @@ zjg() {
 }
 ```
 
+Example macro helper using `fzf` inside `zellij`:
+
+```sh
+zjm() {
+  choice=$(zjsh macros -i | fzf --prompt='macro> ')
+  [ -n "$choice" ] && zjsh exec "$choice"
+}
+```
+
 ## Commands
 
 ```sh
 zjsh list          # print raw target names/paths for selectors
 zjsh list -i       # print display labels with icons
 zjsh list --json   # print target metadata as JSON
+zjsh macros        # print configured macro names for selectors
+zjsh macros -i     # print macro labels with icons
+zjsh macros --json # print macro metadata as JSON
 zjsh connect NAME  # connect to a target
 zjsh connect .     # connect to the current directory
+zjsh exec NAME     # run a macro in a new zellij pane
 zjsh doctor        # check dependencies and config
 zjsh config init   # create sample config
 ```
@@ -250,6 +307,7 @@ zjsh config init   # create sample config
 ● api
 ◆ infra
 ↺ old-api
+▶ prod
 → .
 → /Users/example/work/tooling
 ```
@@ -259,6 +317,7 @@ Default labels:
 * `●`: live `zellij` session
 * `◆`: configured project
 * `↺`: resurrectable session
+* `▶`: configured macro
 * `→`: path entry, including `.` and zoxide paths
 
 Display order:
@@ -303,6 +362,28 @@ Layout precedence:
 
 For path-based entries such as zoxide paths and `.`, the session name is based on the path basename. If that name is already reserved, `zjsh` appends a short path hash.
 
+## Macro Behavior
+
+`zjsh macros` is separate from `zjsh list`.
+
+Use `zjsh list` for connectable targets and `zjsh macros` for executable macro targets.
+
+`zjsh exec` accepts both raw values and icon labels:
+
+```sh
+zjsh exec prod
+zjsh exec "▶ prod"
+```
+
+Execution rules:
+
+1. `zjsh exec` must be run inside `zellij`
+2. the macro opens a new pane with `zellij action new-pane`
+3. macro `cwd` is used when configured
+4. otherwise the runtime current directory is used
+
+`zjsh exec` does not create or switch sessions. It runs only in the currently attached `zellij` session.
+
 ## Resurrection
 
 If a selected target already has a resurrectable `zellij` session, `zjsh` checks `restart_on_resurrection`.
@@ -321,6 +402,8 @@ Project-level settings override `defaults.restart_on_resurrection`.
 * Missing `zoxide`: this is only a warning; zoxide paths will be unavailable.
 * `zjsh list` only shows `.`: no config, no sessions, and no zoxide paths were found.
 * `cwd true` uses the wrong session name: it uses `session`, then project name, not the current directory basename.
+* `zjsh exec` says it must run inside `zellij`: attach to or start a `zellij` session first.
+* Macro `exec` parsing fails for quoted single-string commands: use the multi-argument `exec "cmd" "arg1" "arg2"` form.
 
 ## Development
 

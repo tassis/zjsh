@@ -10,14 +10,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/saweima12/zjsh/internal/domain"
-	"github.com/saweima12/zjsh/internal/platform"
-	configprovider "github.com/saweima12/zjsh/internal/provider/config"
-	"github.com/saweima12/zjsh/internal/provider/zellij"
-	"github.com/saweima12/zjsh/internal/provider/zoxide"
-	"github.com/saweima12/zjsh/internal/service"
-	"github.com/saweima12/zjsh/internal/version"
-	"github.com/saweima12/zjsh/internal/view"
+	"github.com/tassis/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/platform"
+	configprovider "github.com/tassis/zjsh/internal/provider/config"
+	"github.com/tassis/zjsh/internal/provider/zellij"
+	"github.com/tassis/zjsh/internal/provider/zoxide"
+	"github.com/tassis/zjsh/internal/service"
+	"github.com/tassis/zjsh/internal/version"
+	"github.com/tassis/zjsh/internal/view"
 )
 
 type App struct {
@@ -65,8 +65,20 @@ func (a App) Run(ctx context.Context, args []string) int {
 			return 1
 		}
 		return 0
+	case "macros":
+		if err := a.runMacros(ctx, args[1:]); err != nil {
+			_, _ = fmt.Fprintf(a.Stderr, "error: %v\n", err)
+			return 1
+		}
+		return 0
 	case "connect":
 		if err := a.runConnect(ctx, args[1:]); err != nil {
+			_, _ = fmt.Fprintf(a.Stderr, "error: %v\n", err)
+			return 1
+		}
+		return 0
+	case "exec":
+		if err := a.runExec(ctx, args[1:]); err != nil {
 			_, _ = fmt.Fprintf(a.Stderr, "error: %v\n", err)
 			return 1
 		}
@@ -143,11 +155,58 @@ func (a App) runConnect(ctx context.Context, args []string) error {
 	return a.Launcher.Connect(ctx, entry)
 }
 
+func (a App) runMacros(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("macros", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	jsonOutput := fs.Bool("json", false, "output macros as JSON")
+	iconsOutput := fs.Bool("i", false, "show selector icons")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: zjsh macros")
+	}
+	config, err := a.Aggregator.Config.Load(ctx)
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return view.WriteMacroJSON(a.Stdout, config.Macros)
+	}
+	if *iconsOutput {
+		return view.WriteMacroLabels(a.Stdout, config.Macros, config.Defaults.Icons)
+	}
+	return view.WriteMacroPlain(a.Stdout, config.Macros)
+}
+
+func (a App) runExec(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: zjsh exec <macro>")
+	}
+	config, err := a.Aggregator.Config.Load(ctx)
+	if err != nil {
+		return err
+	}
+	target := normalizeMacroTarget(fs.Arg(0), config.Defaults.Icons)
+	macro, err := service.ResolveMacro(config.Macros, target)
+	if err != nil {
+		return err
+	}
+	return a.Launcher.ExecMacro(ctx, macro)
+}
+
 func (a App) printUsage() {
 	_, _ = fmt.Fprintln(a.Stderr, "usage: zjsh <command>")
 	_, _ = fmt.Fprintln(a.Stderr, "commands:")
 	_, _ = fmt.Fprintln(a.Stderr, "  list      list aggregated entries")
+	_, _ = fmt.Fprintln(a.Stderr, "  macros    list configured macros")
 	_, _ = fmt.Fprintln(a.Stderr, "  connect   connect to a session or project")
+	_, _ = fmt.Fprintln(a.Stderr, "  exec      execute a macro in zellij")
 	_, _ = fmt.Fprintln(a.Stderr, "  version   print version")
 	_, _ = fmt.Fprintln(a.Stderr, "  doctor    validate dependencies and config")
 	_, _ = fmt.Fprintln(a.Stderr, "  config    manage config scaffolding")
@@ -401,6 +460,16 @@ func normalizeConnectTarget(value string, icons domain.Icons) string {
 	return value
 }
 
+func normalizeMacroTarget(value string, icons domain.Icons) string {
+	value = strings.TrimSpace(value)
+	for _, prefix := range macroLabelPrefixes(icons) {
+		if strings.HasPrefix(value, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+		}
+	}
+	return value
+}
+
 func connectLabelPrefixes(icons domain.Icons) []string {
 	defaultIcons := domain.DefaultIcons()
 	values := []string{
@@ -414,6 +483,25 @@ func connectLabelPrefixes(icons domain.Icons) []string {
 		icons.Path,
 		"•",
 	}
+	prefixes := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		prefix := value + " "
+		if _, ok := seen[prefix]; ok {
+			continue
+		}
+		seen[prefix] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
+}
+
+func macroLabelPrefixes(icons domain.Icons) []string {
+	defaultIcons := domain.DefaultIcons()
+	values := []string{defaultIcons.Macro, icons.Macro}
 	prefixes := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {

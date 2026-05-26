@@ -16,6 +16,7 @@ defaults {
   icon_session "S"
   icon_resurrectable "R"
   icon_path "Z"
+	  icon_macro "M"
 }
 
 project "api" {
@@ -38,6 +39,15 @@ project "restartable" {
 project "inherits" {
   path "/tmp/inherits"
 }
+
+macro "prod" {
+  exec "ssh" "prod"
+}
+
+macro "api-shell" {
+  cwd "~/work/api"
+  exec "docker" "compose" "exec" "api" "sh"
+}
 `)
 	if err != nil {
 		t.Fatalf("parseConfig() error = %v", err)
@@ -48,7 +58,7 @@ project "inherits" {
 	if !config.Defaults.RestartOnResurrection {
 		t.Fatalf("expected defaults restart_on_resurrection=true")
 	}
-	if config.Defaults.Icons.Project != "P" || config.Defaults.Icons.Session != "S" || config.Defaults.Icons.Resurrectable != "R" || config.Defaults.Icons.Path != "Z" {
+	if config.Defaults.Icons.Project != "P" || config.Defaults.Icons.Session != "S" || config.Defaults.Icons.Resurrectable != "R" || config.Defaults.Icons.Path != "Z" || config.Defaults.Icons.Macro != "M" {
 		t.Fatalf("unexpected configured icons: %+v", config.Defaults.Icons)
 	}
 	if len(config.Projects) != 4 {
@@ -65,6 +75,52 @@ project "inherits" {
 	}
 	if config.Projects[3].RestartOnResurrection != nil {
 		t.Fatalf("expected fourth project to inherit defaults: %+v", config.Projects[3])
+	}
+	if len(config.Macros) != 2 {
+		t.Fatalf("expected 2 macros, got %d", len(config.Macros))
+	}
+	if config.Macros[0].Name != "prod" || len(config.Macros[0].Exec) != 2 || config.Macros[0].Exec[0] != "ssh" || config.Macros[0].Exec[1] != "prod" {
+		t.Fatalf("unexpected first macro: %+v", config.Macros[0])
+	}
+	if config.Macros[1].CWD != "~/work/api" || len(config.Macros[1].Exec) != 5 {
+		t.Fatalf("unexpected second macro: %+v", config.Macros[1])
+	}
+}
+
+func TestParseConfigSupportsSingleStringMacroExec(t *testing.T) {
+	config, err := parseConfig(`macro "prod" {
+  exec "ssh prod"
+}
+`)
+	if err != nil {
+		t.Fatalf("parseConfig() error = %v", err)
+	}
+	if len(config.Macros) != 1 || len(config.Macros[0].Exec) != 2 || config.Macros[0].Exec[0] != "ssh" || config.Macros[0].Exec[1] != "prod" {
+		t.Fatalf("unexpected single-string macro exec: %+v", config.Macros)
+	}
+}
+
+func TestParseConfigRejectsQuotedSingleStringMacroExec(t *testing.T) {
+	_, err := parseConfig(`macro "prod" {
+  exec "ssh \"user@host\""
+}
+`)
+	if err == nil {
+		t.Fatalf("expected quoted single-string exec to fail")
+	}
+}
+
+func TestParseConfigRejectsDuplicateMacroNames(t *testing.T) {
+	_, err := parseConfig(`macro "prod" {
+  exec "ssh" "prod"
+}
+
+macro "prod" {
+  exec "ssh" "other"
+}
+`)
+	if err == nil {
+		t.Fatalf("expected duplicate macro names to fail")
 	}
 }
 
@@ -257,5 +313,27 @@ func TestLoadMissingConfigReturnsEmpty(t *testing.T) {
 	}
 	if config.Defaults.Shell != "sh" || config.Defaults.Icons.Project != "◆" {
 		t.Fatalf("expected default config values, got %+v", config.Defaults)
+	}
+}
+
+func TestLoadExpandsMacroHomePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`macro "prod" {
+  cwd "~/work/api"
+  exec "ssh" "prod"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	config, err := Loader{Path: configPath}.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.Macros[0].CWD != filepath.Join(home, "work", "api") {
+		t.Fatalf("expected expanded macro cwd, got %q", config.Macros[0].CWD)
 	}
 }
