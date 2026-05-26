@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/saweima12/zjsh/internal/domain"
-	"github.com/saweima12/zjsh/internal/platform"
-	"github.com/saweima12/zjsh/internal/provider/config"
-	"github.com/saweima12/zjsh/internal/provider/zellij"
-	"github.com/saweima12/zjsh/internal/provider/zoxide"
-	"github.com/saweima12/zjsh/internal/service"
+	"github.com/tassis/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/platform"
+	"github.com/tassis/zjsh/internal/provider/config"
+	"github.com/tassis/zjsh/internal/provider/zellij"
+	"github.com/tassis/zjsh/internal/provider/zoxide"
+	"github.com/tassis/zjsh/internal/service"
 )
 
 type fakeRunner struct {
@@ -262,6 +262,143 @@ project "api" {
 	got := strings.TrimSpace(stdout.String())
 	if got != "P api\nR old\nZ .\nZ /tmp/notes" {
 		t.Fatalf("expected configured icon labels, got %q", got)
+	}
+}
+
+func TestMacrosListPlain(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`macro "prod" {
+  exec "ssh" "prod"
+}
+
+macro "logs" {
+  exec "journalctl" "-f"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app := App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Aggregator: service.Aggregator{
+			Config: config.Loader{Path: configPath},
+		},
+	}
+	if code := app.Run(context.Background(), []string{"macros"}); code != 0 {
+		t.Fatalf("expected macros success, stderr=%q", stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "prod\nlogs" {
+		t.Fatalf("unexpected macros output: %q", stdout.String())
+	}
+}
+
+func TestMacrosListWithIcon(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`defaults {
+  icon_macro "M"
+}
+
+macro "prod" {
+  exec "ssh" "prod"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app := App{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Aggregator: service.Aggregator{Config: config.Loader{Path: configPath}},
+	}
+	if code := app.Run(context.Background(), []string{"macros", "-i"}); code != 0 {
+		t.Fatalf("expected macros with icons success, stderr=%q", stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "M prod" {
+		t.Fatalf("unexpected macros icon output: %q", stdout.String())
+	}
+}
+
+func TestExecMacroInsideZellij(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{}
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`macro "prod" {
+  cwd "/tmp/api"
+  exec "ssh" "prod"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app := App{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Aggregator: service.Aggregator{Config: config.Loader{Path: configPath}},
+		Launcher:   service.Launcher{Runner: runner, Env: fakeEnv{inZellij: true}},
+	}
+	if code := app.Run(context.Background(), []string{"exec", "prod"}); code != 0 {
+		t.Fatalf("expected exec success, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij action new-pane --cwd /tmp/api -- ssh prod" {
+		t.Fatalf("unexpected exec command: %#v", runner.calls)
+	}
+}
+
+func TestExecMacroAcceptsSelectorLabel(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{}
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`macro "prod" {
+  exec "ssh" "prod"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app := App{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Aggregator: service.Aggregator{Config: config.Loader{Path: configPath}},
+		Launcher:   service.Launcher{Runner: runner, Env: fakeEnv{inZellij: true}, CWD: "/tmp/runtime"},
+	}
+	if code := app.Run(context.Background(), []string{"exec", "▶ prod"}); code != 0 {
+		t.Fatalf("expected exec with label success, stderr=%q", stderr.String())
+	}
+	if runner.calls[len(runner.calls)-1] != "zellij action new-pane --cwd /tmp/runtime -- ssh prod" {
+		t.Fatalf("unexpected exec command: %#v", runner.calls)
+	}
+}
+
+func TestExecMacroFailsOutsideZellij(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := &fakeRunner{}
+	configPath := filepath.Join(t.TempDir(), "config.kdl")
+	err := os.WriteFile(configPath, []byte(`macro "prod" {
+  exec "ssh" "prod"
+}
+`), 0o644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app := App{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Aggregator: service.Aggregator{Config: config.Loader{Path: configPath}},
+		Launcher:   service.Launcher{Runner: runner, Env: fakeEnv{}},
+	}
+	if code := app.Run(context.Background(), []string{"exec", "prod"}); code == 0 {
+		t.Fatalf("expected exec outside zellij to fail")
+	}
+	if !strings.Contains(stderr.String(), "inside zellij") {
+		t.Fatalf("expected inside-zellij error, got %q", stderr.String())
 	}
 }
 

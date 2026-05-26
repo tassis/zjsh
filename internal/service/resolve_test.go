@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/saweima12/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/domain"
 )
 
 func TestResolveExactOrder(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/saweima12/zjsh/internal/domain"
-	"github.com/saweima12/zjsh/internal/provider/config"
-	"github.com/saweima12/zjsh/internal/provider/zellij"
-	"github.com/saweima12/zjsh/internal/provider/zoxide"
+	"github.com/tassis/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/provider/config"
+	"github.com/tassis/zjsh/internal/provider/zellij"
+	"github.com/tassis/zjsh/internal/provider/zoxide"
 )
 
 type fakeRunner struct {

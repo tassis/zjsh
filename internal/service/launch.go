@@ -3,16 +3,20 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
-	"github.com/saweima12/zjsh/internal/domain"
-	"github.com/saweima12/zjsh/internal/platform"
+	"github.com/tassis/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/platform"
 )
 
 type Launcher struct {
 	Runner platform.Runner
 	Env    platform.Env
+	CWD    string
 }
+
+var ErrExecRequiresZellij = fmt.Errorf("exec must be run inside zellij")
 
 func (l Launcher) Connect(ctx context.Context, entry domain.Entry) error {
 	sessionName := effectiveSessionName(entry)
@@ -53,6 +57,33 @@ func (l Launcher) inZellij() bool {
 
 func (l Launcher) run(ctx context.Context, name string, args ...string) error {
 	return l.Runner.RunInteractive(ctx, name, args...)
+}
+
+func (l Launcher) ExecMacro(ctx context.Context, macro domain.Macro) error {
+	if !l.inZellij() {
+		return ErrExecRequiresZellij
+	}
+	if len(macro.Exec) == 0 {
+		return fmt.Errorf("macro %q is missing exec", macro.Name)
+	}
+	cwd := macro.CWD
+	if cwd == "" {
+		var err error
+		cwd, err = l.currentWorkingDir()
+		if err != nil {
+			return err
+		}
+	}
+	args := []string{"action", "new-pane", "--cwd", cwd, "--"}
+	args = append(args, macro.Exec...)
+	return l.run(ctx, "zellij", args...)
+}
+
+func (l Launcher) currentWorkingDir() (string, error) {
+	if l.CWD != "" {
+		return filepath.Abs(l.CWD)
+	}
+	return os.Getwd()
 }
 
 func liveSessionArgs(sessionName string, inZellij bool) (string, []string) {

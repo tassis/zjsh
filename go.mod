@@ -1,4 +1,4 @@
-module github.com/saweima12/zjsh
+module github.com/tassis/zjsh
 
 go 1.24.5
 

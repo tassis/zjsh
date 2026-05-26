@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/saweima12/zjsh/internal/domain"
-	"github.com/saweima12/zjsh/internal/platform"
+	"github.com/tassis/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/platform"
 	kdl "github.com/sblinch/kdl-go"
 	"github.com/sblinch/kdl-go/document"
 )
@@ -67,6 +67,17 @@ func normalizeConfigPaths(config domain.Config) (domain.Config, error) {
 		}
 		project.LayoutFile = layoutFile
 	}
+	for i := range config.Macros {
+		macro := &config.Macros[i]
+		if macro.CWD == "" {
+			continue
+		}
+		cwd, err := platform.ExpandHome(macro.CWD)
+		if err != nil {
+			return domain.Config{}, fmt.Errorf("macro %q: cwd: %w", macro.Name, err)
+		}
+		macro.CWD = cwd
+	}
 	return config, nil
 }
 
@@ -85,13 +96,106 @@ func parseConfig(input string) (domain.Config, error) {
 	if err := dec.Decode(&raw); err != nil {
 		return domain.Config{}, err
 	}
+	macros, err := parseMacros(doc.Nodes)
+	if err != nil {
+		return domain.Config{}, err
+	}
 	config.Defaults = defaultsWithFallback(config.Defaults, raw.Defaults.toDomain())
 	projects, err := raw.projects()
 	if err != nil {
 		return domain.Config{}, err
 	}
 	config.Projects = projects
+	config.Macros = macros
 	return config, nil
+}
+
+func parseMacros(nodes []*document.Node) ([]domain.Macro, error) {
+	macros := make([]domain.Macro, 0)
+	seen := make(map[string]struct{})
+	for _, node := range nodes {
+		if nodeName(node) != "macro" {
+			continue
+		}
+		macro, err := parseMacroNode(node)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[macro.Name]; ok {
+			return nil, fmt.Errorf("macro %q: duplicate name", macro.Name)
+		}
+		seen[macro.Name] = struct{}{}
+		macros = append(macros, macro)
+	}
+	return macros, nil
+}
+
+func parseMacroNode(node *document.Node) (domain.Macro, error) {
+	if len(node.Arguments) != 1 {
+		return domain.Macro{}, fmt.Errorf("macro node requires a single name argument")
+	}
+	name, ok := node.Arguments[0].Value.(string)
+	if !ok || strings.TrimSpace(name) == "" {
+		return domain.Macro{}, fmt.Errorf("macro node requires a single name argument")
+	}
+	macro := domain.Macro{Name: strings.TrimSpace(name)}
+	for _, child := range node.Children {
+		switch nodeName(child) {
+		case "cwd":
+			if len(child.Arguments) != 1 {
+				return domain.Macro{}, fmt.Errorf("macro %q: cwd: expected a single string value", macro.Name)
+			}
+			cwd, ok := child.Arguments[0].Value.(string)
+			if !ok {
+				return domain.Macro{}, fmt.Errorf("macro %q: cwd: expected string value", macro.Name)
+			}
+			macro.CWD = cwd
+		case "exec":
+			if len(child.Arguments) == 0 {
+				return domain.Macro{}, fmt.Errorf("macro %q: exec: expected at least one argument", macro.Name)
+			}
+			execArgs := make([]string, 0, len(child.Arguments))
+			for _, arg := range child.Arguments {
+				value, ok := arg.Value.(string)
+				if !ok {
+					return domain.Macro{}, fmt.Errorf("macro %q: exec: expected string arguments", macro.Name)
+				}
+				execArgs = append(execArgs, value)
+			}
+			macro.Exec = execArgs
+		}
+	}
+	if len(macro.Exec) == 0 {
+		return domain.Macro{}, fmt.Errorf("macro %q: exec is required", macro.Name)
+	}
+	return normalizeMacroExec(macro)
+}
+
+func normalizeMacroExec(macro domain.Macro) (domain.Macro, error) {
+	if len(macro.Exec) != 1 {
+		return macro, nil
+	}
+	parts, err := splitExecString(macro.Exec[0])
+	if err != nil {
+		return domain.Macro{}, fmt.Errorf("macro %q: exec: %w", macro.Name, err)
+	}
+	macro.Exec = parts
+	return macro, nil
+}
+
+func splitExecString(value string) ([]string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, fmt.Errorf("expected non-empty command")
+	}
+	if strings.ContainsAny(trimmed, `"'`) {
+		return nil, fmt.Errorf("single-string exec does not support quotes; use multiple exec arguments")
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("expected non-empty command")
+	}
+	return parts, nil
 }
 
 func validateStrictBooleanNodes(nodes []*document.Node) error {
@@ -176,6 +280,9 @@ func iconsWithFallback(base, parsed domain.Icons) domain.Icons {
 	if parsed.Path != "" {
 		base.Path = parsed.Path
 	}
+	if parsed.Macro != "" {
+		base.Macro = parsed.Macro
+	}
 	return base
 }
 
@@ -191,6 +298,7 @@ type rawDefaults struct {
 	IconSession           string `kdl:"icon_session"`
 	IconResurrectable     string `kdl:"icon_resurrectable"`
 	IconPath              string `kdl:"icon_path"`
+	IconMacro             string `kdl:"icon_macro"`
 }
 
 func (d rawDefaults) toDomain() domain.Defaults {
@@ -202,6 +310,7 @@ func (d rawDefaults) toDomain() domain.Defaults {
 			Session:       d.IconSession,
 			Resurrectable: d.IconResurrectable,
 			Path:          d.IconPath,
+			Macro:         d.IconMacro,
 		},
 	}
 }

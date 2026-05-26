@@ -14,7 +14,7 @@ fi
 
 OUTPUT=${OUTPUT:-"${BIN_DIR}/${APP}${EXT}"}
 
-LDFLAGS="-s -w -X github.com/saweima12/zjsh/internal/version.Version=${VERSION}"
+LDFLAGS="-s -w -X github.com/tassis/zjsh/internal/version.Version=${VERSION}"
 
 mkdir -p "$(dirname "${OUTPUT}")"
 

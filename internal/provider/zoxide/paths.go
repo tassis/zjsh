@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/saweima12/zjsh/internal/platform"
+	"github.com/tassis/zjsh/internal/platform"
 )
 
 type Provider struct {

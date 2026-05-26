@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/saweima12/zjsh/internal/domain"
+	"github.com/tassis/zjsh/internal/domain"
 )
 
 type recordingRunner struct {
@@ -123,5 +123,41 @@ func TestLauncherCreateSessionWithPlainCwdUsesOptions(t *testing.T) {
 	}
 	if runner.calls[0] != "zellij attach -c api options --default-cwd /tmp/api" {
 		t.Fatalf("unexpected call: %#v", runner.calls)
+	}
+}
+
+func TestLauncherExecMacroInsideZellij(t *testing.T) {
+	runner := &recordingRunner{}
+	launcher := Launcher{Runner: runner, Env: staticEnv{inZellij: true}, CWD: "/tmp/runtime"}
+	err := launcher.ExecMacro(context.Background(), domain.Macro{Name: "prod", Exec: []string{"ssh", "prod"}})
+	if err != nil {
+		t.Fatalf("ExecMacro() error = %v", err)
+	}
+	if runner.calls[0] != "zellij action new-pane --cwd /tmp/runtime -- ssh prod" {
+		t.Fatalf("unexpected call: %#v", runner.calls)
+	}
+}
+
+func TestLauncherExecMacroUsesConfiguredCWD(t *testing.T) {
+	runner := &recordingRunner{}
+	launcher := Launcher{Runner: runner, Env: staticEnv{inZellij: true}}
+	err := launcher.ExecMacro(context.Background(), domain.Macro{Name: "prod", CWD: "/tmp/api", Exec: []string{"ssh", "prod"}})
+	if err != nil {
+		t.Fatalf("ExecMacro() error = %v", err)
+	}
+	if runner.calls[0] != "zellij action new-pane --cwd /tmp/api -- ssh prod" {
+		t.Fatalf("unexpected call: %#v", runner.calls)
+	}
+}
+
+func TestLauncherExecMacroRequiresZellij(t *testing.T) {
+	runner := &recordingRunner{}
+	launcher := Launcher{Runner: runner, Env: staticEnv{}}
+	err := launcher.ExecMacro(context.Background(), domain.Macro{Name: "prod", Exec: []string{"ssh", "prod"}})
+	if err == nil {
+		t.Fatalf("expected error outside zellij")
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no commands outside zellij, got %#v", runner.calls)
 	}
 }
